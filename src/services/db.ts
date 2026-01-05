@@ -26,107 +26,9 @@ export const initDB = (): Promise<void> => {
     };
 
     request.onsuccess = async () => {
-      // Check for migration from old DB
-      await migrateFromOldDB();
       resolve();
     };
   });
-};
-
-// Migrate from old ChatP2P_v1 to v2 with session support
-const migrateFromOldDB = async (): Promise<void> => {
-  return new Promise((resolve) => {
-    const oldRequest = indexedDB.open("ChatP2P_v1", 1);
-
-    oldRequest.onerror = () => resolve(); // Old DB doesn't exist, nothing to migrate
-
-    oldRequest.onsuccess = async () => {
-      const oldDb = oldRequest.result;
-
-      // Check if old store exists
-      if (!oldDb.objectStoreNames.contains("chat_sessions")) {
-        oldDb.close();
-        resolve();
-        return;
-      }
-
-      try {
-        const transaction = oldDb.transaction("chat_sessions", "readonly");
-        const store = transaction.objectStore("chat_sessions");
-        const getAllRequest = store.getAll();
-
-        getAllRequest.onsuccess = async () => {
-          const oldSessions = getAllRequest.result as ChatSession[];
-
-          if (oldSessions.length === 0) {
-            oldDb.close();
-            resolve();
-            return;
-          }
-
-          // Get the current user ID from localStorage to assign as sessionId
-          const currentUserId = localStorage.getItem("synapse_user_id");
-          if (!currentUserId) {
-            console.warn("No user ID found, skipping migration");
-            oldDb.close();
-            resolve();
-            return;
-          }
-
-          console.log(
-            `Migrating ${oldSessions.length} chats to v2 with session support...`
-          );
-
-          // Save each session to new DB with session info
-          await Promise.all(
-            oldSessions.map((session) => saveChatToDB(currentUserId, session))
-          );
-
-          console.log("Migration complete. Deleting old database...");
-          oldDb.close();
-
-          // Delete old database
-          indexedDB.deleteDatabase("ChatP2P_v1");
-
-          resolve();
-        };
-
-        getAllRequest.onerror = () => {
-          oldDb.close();
-          resolve();
-        };
-      } catch (e) {
-        console.error("Migration error:", e);
-        oldDb.close();
-        resolve();
-      }
-    };
-  });
-};
-
-// Also migrate from localStorage if needed (legacy migration)
-const migrateFromLocalStorage = async (sessionId: string): Promise<void> => {
-  const STORAGE_KEY = "synapse_chats";
-  const data = localStorage.getItem(STORAGE_KEY);
-
-  if (!data) return;
-
-  try {
-    const chats = JSON.parse(data) as Record<string, ChatSession>;
-    console.log(
-      "Migrating chats from localStorage...",
-      Object.keys(chats).length
-    );
-
-    await Promise.all(
-      Object.values(chats).map((session) => saveChatToDB(sessionId, session))
-    );
-
-    localStorage.removeItem(STORAGE_KEY);
-    console.log("LocalStorage migration complete.");
-  } catch (e) {
-    console.error("LocalStorage migration failed:", e);
-  }
 };
 
 export const saveChatToDB = (
@@ -171,9 +73,6 @@ export const getAllChatsFromDB = (
 
     request.onsuccess = async () => {
       const db = request.result;
-
-      // First time for this session, check localStorage migration
-      await migrateFromLocalStorage(sessionId);
 
       const transaction = db.transaction(STORE_NAME, "readonly");
       const store = transaction.objectStore(STORE_NAME);
