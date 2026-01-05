@@ -1,0 +1,5 @@
+{
+  "name": "Chat P2P",
+  "description": "A secure, serverless peer-to-peer chat application that stores messages locally on your device. Connect directly with others using a unique ID.",
+  "requestFramePermissions": []
+}
