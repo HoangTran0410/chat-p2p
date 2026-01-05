@@ -1,20 +1,56 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Ping - P2P Chat
 
-# Run and deploy your AI Studio app
+A secure, browser-to-browser chat application powered by WebRTC. No central server for messages - everything goes directly peer-to-peer.
 
-This contains everything you need to run your app locally.
+## ✨ Features
 
-View your app in AI Studio: https://ai.studio/apps/drive/1jBoS3j0eD09g2_cKlmtWhSiqqUKg19En
+- **🔐 End-to-End Encrypted** - Messages go directly between browsers via WebRTC
+- **📁 File Sharing** - Send images, videos, and files (chunked transfer for large files)
+- **📊 Progress Indicators** - Real-time progress for file transfers and history sync
+- **💾 Local Storage** - Chats persisted in IndexedDB (auto-migrates from localStorage)
+- **🔄 History Sync** - Merge chat history between devices with 2-way sync
+- **⚙️ Configurable Server** - Customize PeerJS signaling server
+- **📱 Mobile Responsive** - Works on desktop and mobile browsers
+- **✅ Message Status** - Sent, Delivered, Read indicators with retry for failed messages
 
-## Run Locally
+## 🚀 Quick Start
 
-**Prerequisites:**  Node.js
+```bash
+# Install dependencies
+bun install
 
+# Start dev server
+bun run dev
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+# Build for production
+bun run build
+```
+
+## 🛠 Tech Stack
+
+| Technology | Purpose |
+|------------|---------|
+| React 19 | UI Framework |
+| TypeScript | Type Safety |
+| Vite 6 | Bundler |
+| PeerJS | WebRTC P2P |
+| IndexedDB | Local Storage |
+| Tailwind CSS | Styling |
+
+## 📡 How It Works
+
+1. **Signaling** - PeerJS server (`fbaio.xyz`) handles initial peer discovery
+2. **Connection** - WebRTC establishes direct browser-to-browser link
+3. **Messaging** - All data transferred directly between peers
+4. **Storage** - Chats saved locally in IndexedDB
+
+## ⚠️ Limitations
+
+- Both peers must be online to chat
+- Large files (>50MB) may fail on slow connections
+- NAT traversal depends on network configuration
+- Max 50 simultaneous connections
+
+## 📄 License
+
+MIT

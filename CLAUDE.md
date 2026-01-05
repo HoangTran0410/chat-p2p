@@ -1,64 +1,67 @@
 # Chat P2P - Project Guide
 
 ## Overview
-A peer-to-peer chat application using PeerJS for real-time browser-to-browser communication without a central server.
+P2P chat app using PeerJS (WebRTC) for direct browser-to-browser messaging.
 
 ## Tech Stack
-- **Framework**: React 19 + TypeScript
-- **Bundler**: Vite 6
-- **Package Manager**: Bun
-- **P2P**: PeerJS (WebRTC-based)
-- **Icons**: Lucide React
-- **Date Utils**: date-fns
+- React 19 + TypeScript
+- Vite 6 + Bun
+- PeerJS, IndexedDB, Tailwind CSS
+- Icons: Lucide React, Dates: date-fns
 
 ## Project Structure
 ```
 src/
-├── App.tsx           # Main app component with chat logic
-├── index.tsx         # Entry point
-├── index.html        # HTML template
-├── types.ts          # TypeScript type definitions
+├── App.tsx              # Main app, state management
+├── types.ts             # TypeScript types
+├── constants/index.ts   # PeerJS config defaults
 ├── components/
-│   ├── ChatSidebar.tsx   # Sidebar with chat list & connection UI
-│   └── ChatWindow.tsx    # Main chat interface
+│   ├── ChatSidebar.tsx  # Sidebar, chat list, connection
+│   ├── ChatWindow.tsx   # Chat UI, messages, file transfer
+│   └── SettingsModal.tsx# PeerJS server config
 ├── hooks/
-│   └── useP2P.ts     # PeerJS hook for P2P communication
+│   └── useP2P.ts        # PeerJS connection hook
 └── services/
-    └── storage.ts    # LocalStorage persistence for chats
+    ├── storage.ts       # User ID persistence
+    └── db.ts            # IndexedDB for chats
 ```
 
 ## Commands
 ```bash
-bun install      # Install dependencies
-bun run dev      # Start dev server (port 3000)
-bun run build    # Build for production
-bun run preview  # Preview production build
+bun install    # Install deps
+bun run dev    # Dev server
+bun run build  # Production build
 ```
 
 ## Key Patterns
 
 ### State Management
-- Chat sessions stored in React state + localStorage
-- P2P connection state managed via `useP2P` hook
+- Chat sessions: `Record<string, ChatSession>` in App.tsx
+- Persistence: IndexedDB via `db.ts`
+- Connection states tracked in `useP2P` hook
 
-### P2P Communication
-- Uses PeerJS for WebRTC connections
-- Each user gets a unique peer ID on connection
-- Messages sent directly between peers
+### Message Types
+- `text`, `image`, `video`, `file`
+- Status: `sending`, `sent`, `delivered`, `read`, `failed`
+- Large files use chunked transfer (64KB chunks)
 
-### Styling
-- Inline styles and CSS-in-JS patterns
-- Dark theme with gradient backgrounds
-- Mobile-responsive design
+### P2P Protocol
+- `sync_request/reject/cancel` - History sync handshake
+- `sync_data_initial/final` - 2-way sync data
+- `file_start/chunk/end` - Chunked file transfer
+- `receipt` - Delivery/read receipts
+- `typing`, `presence` - Status updates
 
-## Environment Variables
-Set in `.env.local`:
-- `GEMINI_API_KEY` - For AI features (optional)
+### Connection Limits
+- Max 50 connections (configurable in `useP2P.ts`)
+- Oldest auto-disconnects when limit exceeded
 
-## Path Aliases
-- `@/*` → maps to project root
+## Config
+PeerJS server settings in localStorage (`peer_config`):
+- Default: `fbaio.xyz:443/peer` (secure)
+- Editable via Settings modal
 
 ## Build Output
-- Production builds output to root directory
-- Assets placed in `public/` folder
-- Vendor code split into separate chunks
+- HTML: `index.html`
+- Assets: `public/`
+- Code-split: vendor, components, services
