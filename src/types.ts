@@ -30,6 +30,13 @@ export interface User {
   name: string;
 }
 
+// Multi-session support - each session is a separate identity
+export interface UserSession {
+  id: string; // Peer ID for this session
+  name?: string; // Display name (e.g., "Work", "Personal")
+  createdAt: number;
+}
+
 export type PeerConnectionStatus =
   | "new"
   | "connecting"

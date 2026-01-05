@@ -1,21 +1,18 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   MessageSquare,
   Plus,
   Copy,
   Check,
   Circle,
-  Edit2,
-  Save,
-  X,
   Pencil,
   LayoutDashboard,
   RefreshCw,
-  Shuffle,
   Settings,
 } from "lucide-react";
-import { ChatSession } from "../types";
+import { ChatSession, UserSession } from "../types";
 import { formatDistanceToNow } from "date-fns";
+import { SessionSwitcher } from "./SessionSwitcher";
 
 interface ChatSidebarProps {
   myId: string;
@@ -24,14 +21,18 @@ interface ChatSidebarProps {
   selectedPeerId: string | null;
   onSelectPeer: (peerId: string) => void;
   onConnect: (peerId: string) => void;
-  onUpdateId: (newId: string) => void;
   onRenameChat: (peerId: string, newName: string) => void;
   onShowDashboard: () => void;
   peerError: string | null;
   isReady: boolean;
   onRetry: () => void;
-  onRandomId: () => void;
   onOpenSettings: () => void;
+  // Session management props
+  sessions: UserSession[];
+  activeSessionId: string;
+  onSwitchSession: (sessionId: string) => void;
+  onCreateNewSession: () => void;
+  onDeleteSession: (sessionId: string) => void;
 }
 
 export const ChatSidebar: React.FC<ChatSidebarProps> = ({
@@ -41,32 +42,25 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   selectedPeerId,
   onSelectPeer,
   onConnect,
-  onUpdateId,
   onRenameChat,
   onShowDashboard,
   peerError,
   isReady,
   onRetry,
-  onRandomId,
   onOpenSettings,
+  sessions,
+  activeSessionId,
+  onSwitchSession,
+  onCreateNewSession,
+  onDeleteSession,
 }) => {
   const [newPeerId, setNewPeerId] = useState("");
   const [copied, setCopied] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
 
-  // ID Editing state
-  const [isEditingId, setIsEditingId] = useState(false);
-  const [tempId, setTempId] = useState("");
-
   // Chat Renaming state
   const [renamingPeerId, setRenamingPeerId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-
-  useEffect(() => {
-    if (!isEditingId) {
-      setTempId(myId);
-    }
-  }, [myId, isEditingId]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(myId);
@@ -80,22 +74,6 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       onConnect(newPeerId);
       setNewPeerId("");
       setIsAdding(false);
-    }
-  };
-
-  const handleIdSave = () => {
-    if (tempId && tempId !== myId) {
-      // Basic validation for PeerJS ID compatibility (alphanumeric, dashes, underscores)
-      if (/^[a-zA-Z0-9-_]+$/.test(tempId)) {
-        onUpdateId(tempId);
-        setIsEditingId(false);
-      } else {
-        alert(
-          "ID can only contain letters, numbers, hyphens, and underscores."
-        );
-      }
-    } else {
-      setIsEditingId(false);
     }
   };
 
@@ -148,96 +126,22 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             </button>
           </div>
         </div>
-        <div className="bg-slate-800 rounded-lg p-3">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-2">
-              <Circle
-                className={`w-2 h-2 ${
-                  peerError
-                    ? "fill-red-500 text-red-500"
-                    : isReady
-                    ? "fill-green-500 text-green-500"
-                    : "fill-yellow-500 text-yellow-500"
-                }`}
-              />
-              <span className="text-xs text-slate-400">Your ID</span>
-            </div>
-          </div>
 
-          {isEditingId ? (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={tempId}
-                onChange={(e) => setTempId(e.target.value)}
-                className="flex-1 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-white focus:border-primary-500 outline-none"
-                autoFocus
-              />
-              <button
-                onClick={handleIdSave}
-                className="p-1.5 bg-primary-600 hover:bg-primary-500 text-white rounded"
-              >
-                <Save className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setIsEditingId(false)}
-                className="p-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          ) : (
-            <>
-              <code className="block text-sm text-slate-200 truncate font-mono bg-slate-950 p-1.5 rounded border border-slate-700 select-all">
-                {myId || "Initializing..."}
-              </code>
-              <div className="mt-2 flex items-center gap-1">
-                <button
-                  onClick={() => {
-                    setTempId(myId);
-                    setIsEditingId(true);
-                  }}
-                  className="p-1.5 hover:bg-slate-700 rounded-md transition-colors text-slate-400 hover:text-white"
-                  title="Edit ID"
-                >
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={onRandomId}
-                  className="p-1.5 hover:bg-slate-700 rounded-md transition-colors text-slate-400 hover:text-white"
-                  title="Generate New ID"
-                >
-                  <Shuffle className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={handleCopy}
-                  className="p-1.5 hover:bg-slate-700 rounded-md transition-colors text-slate-400 hover:text-white"
-                  title="Copy ID"
-                >
-                  {copied ? (
-                    <Check className="w-4 h-4 text-green-500" />
-                  ) : (
-                    <Copy className="w-4 h-4" />
-                  )}
-                </button>
-                {peerError && (
-                  <button
-                    onClick={onRetry}
-                    className="p-1.5 hover:bg-slate-700 rounded-md transition-colors text-primary-400 hover:text-primary-300"
-                    title="Retry Connection"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-          {peerError && (
-            <div className="mt-2 text-xs text-red-400 font-medium">
-              {peerError}
-            </div>
-          )}
-        </div>
+        {/* Session Switcher with ID display */}
+        <SessionSwitcher
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onSwitchSession={onSwitchSession}
+          onCreateNewSession={onCreateNewSession}
+          onDeleteSession={onDeleteSession}
+          isReady={isReady}
+          peerError={peerError}
+        />
+        {peerError && (
+          <div className="mt-2 text-xs text-red-400 font-medium px-1">
+            {peerError}
+          </div>
+        )}
       </div>
 
       {/* New Chat Button */}

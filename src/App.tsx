@@ -1,11 +1,19 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useP2P } from "./hooks/useP2P";
-import { generateId } from "./services/storage";
+import {
+  generateId,
+  getStoredSessions,
+  storeSession,
+  deleteSession as deleteStoredSession,
+  getActiveSessionId,
+  setActiveSessionId,
+} from "./services/storage";
 import {
   initDB,
   getAllChatsFromDB,
   saveChatToDB,
   deleteChatFromDB,
+  deleteAllChatsForSession,
 } from "./services/db";
 import { ChatSidebar } from "./components/ChatSidebar";
 import { ChatWindow } from "./components/ChatWindow";
@@ -17,8 +25,9 @@ import {
   FILE_CHUNK_SIZE,
   FileTransfer,
   MessageType,
+  UserSession,
 } from "./types";
-import { X, RefreshCw } from "lucide-react";
+import { X, RefreshCw, AlertTriangle } from "lucide-react";
 import { DEFAULT_PEER_CONFIG } from "./constants";
 
 export default function App() {
@@ -27,6 +36,11 @@ export default function App() {
   const [selectedPeerId, setSelectedPeerId] = useState<string | null>(null);
   const [showMobileDashboard, setShowMobileDashboard] = useState(false);
   const [typingStates, setTypingStates] = useState<Record<string, boolean>>({});
+
+  // Session management state
+  const [sessions, setSessions] = useState<UserSession[]>([]);
+  const [activeSessionId, setActiveSessionIdState] = useState<string>("");
+  const [showNewSessionDialog, setShowNewSessionDialog] = useState(false);
 
   // Settings state
   const [showSettings, setShowSettings] = useState(false);
@@ -60,17 +74,52 @@ export default function App() {
   } | null>(null);
   const activeTransfersRef = useRef<Map<string, FileTransfer>>(new Map());
 
+  // Ref to track current session ID for use in callbacks
+  const activeSessionIdRef = useRef<string>("");
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
+
   // Ref for sendMessage to avoid circular dependency
   const sendMessageRef = useRef<(peerId: string, data: any) => boolean>(
     () => false
   );
 
-  // Load initial chats
+  // Load initial sessions and chats
   useEffect(() => {
     const init = async () => {
       try {
         await initDB();
-        const storedChats = await getAllChatsFromDB();
+
+        // Load sessions
+        let storedSessions = getStoredSessions();
+        let currentSessionId = getActiveSessionId();
+
+        // If no sessions exist, create initial session
+        if (storedSessions.length === 0) {
+          const initialId = generateId();
+          const initialSession: UserSession = {
+            id: initialId,
+            createdAt: Date.now(),
+          };
+          storeSession(initialSession);
+          setActiveSessionId(initialId);
+          storedSessions = [initialSession];
+          currentSessionId = initialId;
+        } else if (
+          !currentSessionId ||
+          !storedSessions.find((s) => s.id === currentSessionId)
+        ) {
+          // If no active session or active session doesn't exist, use first
+          currentSessionId = storedSessions[0].id;
+          setActiveSessionId(currentSessionId);
+        }
+
+        setSessions(storedSessions);
+        setActiveSessionIdState(currentSessionId);
+
+        // Load chats for the active session
+        const storedChats = await getAllChatsFromDB(currentSessionId);
         setChats(storedChats);
       } catch (e) {
         console.error("Failed to init storage:", e);
@@ -126,7 +175,7 @@ export default function App() {
           });
 
           const updatedSession = { ...session, messages: updatedMessages };
-          saveChatToDB(updatedSession);
+          saveChatToDB(activeSessionIdRef.current, updatedSession);
           return { ...prev, [peerId]: updatedSession };
         });
         return;
@@ -218,7 +267,7 @@ export default function App() {
             unreadCount:
               selectedPeerId === peerId ? 0 : currentSession.unreadCount + 1,
           };
-          saveChatToDB(updatedSession);
+          saveChatToDB(activeSessionIdRef.current, updatedSession);
           return { ...prev, [peerId]: updatedSession };
         });
 
@@ -289,7 +338,7 @@ export default function App() {
           );
 
           const updatedSession = { ...session, messages: mergedMessages };
-          saveChatToDB(updatedSession);
+          saveChatToDB(activeSessionIdRef.current, updatedSession);
 
           // If this was initial data, send back my merged full history (Final Step)
           if (data.type === "sync_data_initial") {
@@ -381,7 +430,7 @@ export default function App() {
         };
 
         const newChats = { ...prev, [peerId]: updatedSession };
-        saveChatToDB(updatedSession);
+        saveChatToDB(activeSessionIdRef.current, updatedSession);
         return newChats;
       });
     },
@@ -398,7 +447,7 @@ export default function App() {
           lastUpdated: Date.now(),
           unreadCount: 0,
         };
-        saveChatToDB(newSession);
+        saveChatToDB(activeSessionIdRef.current, newSession);
         return { ...prev, [peerId]: newSession };
       }
       return prev;
@@ -491,7 +540,7 @@ export default function App() {
         };
 
         const newChats = { ...prev, [selectedPeerId]: updatedSession };
-        saveChatToDB(updatedSession);
+        saveChatToDB(activeSessionIdRef.current, updatedSession);
         return newChats;
       });
 
@@ -509,7 +558,7 @@ export default function App() {
             );
 
             const updatedSession = { ...session, messages: updatedMessages };
-            saveChatToDB(updatedSession);
+            saveChatToDB(activeSessionIdRef.current, updatedSession);
             return { ...currentChats, [selectedPeerId]: updatedSession };
           }
 
@@ -543,7 +592,7 @@ export default function App() {
         };
 
         const newChats = { ...prev, [selectedPeerId]: updatedSession };
-        saveChatToDB(updatedSession);
+        saveChatToDB(activeSessionIdRef.current, updatedSession);
         return newChats;
       });
     }
@@ -636,7 +685,7 @@ export default function App() {
         msg.id === fileId ? { ...msg, status: "sent" as const } : msg
       );
       const updatedSession = { ...session, messages: updatedMessages };
-      saveChatToDB(updatedSession);
+      saveChatToDB(activeSessionIdRef.current, updatedSession);
       return { ...prev, [selectedPeerId]: updatedSession };
     });
 
@@ -676,7 +725,7 @@ export default function App() {
         );
 
         const updatedSession = { ...currentSession, messages: updatedMessages };
-        saveChatToDB(updatedSession);
+        saveChatToDB(activeSessionIdRef.current, updatedSession);
         return { ...prev, [selectedPeerId]: updatedSession };
       });
 
@@ -693,7 +742,7 @@ export default function App() {
             );
 
             const updatedSession = { ...session, messages: updatedMessages };
-            saveChatToDB(updatedSession);
+            saveChatToDB(activeSessionIdRef.current, updatedSession);
             return { ...currentChats, [selectedPeerId]: updatedSession };
           }
 
@@ -764,7 +813,7 @@ export default function App() {
       setChats((prev) => {
         const newChats = { ...prev };
         delete newChats[selectedPeerId];
-        deleteChatFromDB(selectedPeerId);
+        deleteChatFromDB(activeSessionIdRef.current, selectedPeerId);
         return newChats;
       });
       setSelectedPeerId(null);
@@ -781,7 +830,7 @@ export default function App() {
         name: newName.trim() === "" ? undefined : newName.trim(),
       };
 
-      saveChatToDB(updatedChat);
+      saveChatToDB(activeSessionIdRef.current, updatedChat);
       return { ...prev, [peerId]: updatedChat };
     });
   };
@@ -789,6 +838,80 @@ export default function App() {
   const handleBackToSidebar = () => {
     setSelectedPeerId(null);
     setShowMobileDashboard(false);
+  };
+
+  // Session Management Handlers
+  const handleSwitchSession = async (sessionId: string) => {
+    if (sessionId === activeSessionId) return;
+
+    // Clear current state
+    setSelectedPeerId(null);
+    setChats({});
+
+    // Update active session
+    setActiveSessionId(sessionId);
+    setActiveSessionIdState(sessionId);
+
+    // Update P2P with new ID
+    updateId(sessionId);
+
+    // Load chats for new session
+    try {
+      const storedChats = await getAllChatsFromDB(sessionId);
+      setChats(storedChats);
+    } catch (e) {
+      console.error("Failed to load chats for session:", e);
+    }
+  };
+
+  const handleCreateNewSession = () => {
+    setShowNewSessionDialog(true);
+  };
+
+  const handleConfirmNewSession = async () => {
+    const newId = generateId();
+    const newSession: UserSession = {
+      id: newId,
+      createdAt: Date.now(),
+    };
+
+    // Store new session
+    storeSession(newSession);
+
+    // Update state
+    const updatedSessions = [...sessions, newSession];
+    setSessions(updatedSessions);
+
+    // Switch to new session
+    setActiveSessionId(newId);
+    setActiveSessionIdState(newId);
+
+    // Update P2P with new ID
+    updateId(newId);
+
+    // Clear chats (new session has no chats)
+    setChats({});
+    setSelectedPeerId(null);
+
+    // Close dialog
+    setShowNewSessionDialog(false);
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    if (sessionId === activeSessionId) return; // Can't delete active session
+
+    // Delete session from storage
+    deleteStoredSession(sessionId);
+
+    // Delete all chats for this session
+    try {
+      await deleteAllChatsForSession(sessionId);
+    } catch (e) {
+      console.error("Failed to delete chats for session:", e);
+    }
+
+    // Update state
+    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
   };
 
   const activeConnectionIds = Object.keys(connectionStates).filter(
@@ -857,14 +980,18 @@ export default function App() {
             }
           }}
           onConnect={handleConnect}
-          onUpdateId={updateId}
           onRenameChat={handleRenameChat}
           onShowDashboard={() => setShowMobileDashboard(true)}
           peerError={peerError}
           isReady={isReady}
           onRetry={() => updateId(myId)}
-          onRandomId={() => updateId(generateId())}
           onOpenSettings={() => setShowSettings(true)}
+          // Session management props
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onSwitchSession={handleSwitchSession}
+          onCreateNewSession={handleCreateNewSession}
+          onDeleteSession={handleDeleteSession}
         />
       </div>
 
@@ -898,8 +1025,6 @@ export default function App() {
           onTyping={handleTyping}
           peerError={peerError}
           onRetry={() => updateId(myId)}
-          onRandomId={() => updateId(generateId())}
-          onUpdateId={updateId}
           onRenameChat={(newName) =>
             selectedPeerId && handleRenameChat(selectedPeerId, newName)
           }
@@ -979,6 +1104,45 @@ export default function App() {
                 className="flex-1 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg transition-colors"
               >
                 Allow
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Session Confirmation Dialog */}
+      {showNewSessionDialog && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-sm w-full shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-yellow-500/10 rounded-full">
+                <AlertTriangle className="w-6 h-6 text-yellow-400" />
+              </div>
+              <h3 className="text-lg font-medium text-white">
+                Create New Session?
+              </h3>
+            </div>
+            <p className="text-slate-400 mb-2">Creating a new session will:</p>
+            <ul className="text-sm text-slate-400 mb-4 space-y-1 ml-4">
+              <li>• Disconnect all current chats</li>
+              <li>• Generate a new ID</li>
+              <li>• Start with an empty chat list</li>
+            </ul>
+            <p className="text-sm text-slate-500 mb-6">
+              You can switch back to this session anytime.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowNewSessionDialog(false)}
+                className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmNewSession}
+                className="flex-1 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg transition-colors"
+              >
+                Create Session
               </button>
             </div>
           </div>

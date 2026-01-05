@@ -14,7 +14,6 @@ import {
   AlertCircle,
   X,
   MessageSquare,
-  Shuffle,
   Edit2,
   Save,
   Info,
@@ -54,8 +53,6 @@ interface ChatWindowProps {
   // Identity actions
   peerError: string | null;
   onRetry: () => void;
-  onRandomId: () => void;
-  onUpdateId: (newId: string) => void;
   onRenameChat: (newName: string) => void;
   onResendMessage: (messageId: string) => void;
   onRequestSync: () => void;
@@ -90,8 +87,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   onTyping,
   peerError,
   onRetry,
-  onRandomId,
-  onUpdateId,
   onRenameChat,
   onResendMessage,
   onRequestSync,
@@ -101,8 +96,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 }) => {
   const [inputText, setInputText] = useState("");
   const [copied, setCopied] = useState(false);
-  const [isEditingId, setIsEditingId] = useState(false);
-  const [tempId, setTempId] = useState("");
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(
     null
   );
@@ -317,81 +310,31 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 <Shield className="w-5 h-5 text-primary-400" />
                 Your Digital Identity
               </h3>
-              {isEditingId ? (
-                <div className="flex items-center gap-3 mb-4">
-                  <input
-                    type="text"
-                    value={tempId}
-                    onChange={(e) => setTempId(e.target.value)}
-                    className="flex-1 text-xl font-mono bg-slate-950 border border-slate-600 rounded-lg px-4 py-2 text-white focus:border-primary-500 outline-none"
-                    autoFocus
-                  />
+              <code className="block text-2xl md:text-3xl font-mono text-white tracking-tight break-all mb-4">
+                {myId || "Generating ID..."}
+              </code>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={handleCopyId}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-sm font-medium transition-colors text-slate-200"
+                >
+                  {copied ? (
+                    <Check className="w-4 h-4 text-green-400" />
+                  ) : (
+                    <Copy className="w-4 h-4" />
+                  )}
+                  {copied ? "Copied" : "Copy ID"}
+                </button>
+                {peerError && (
                   <button
-                    onClick={() => {
-                      if (tempId && /^[a-zA-Z0-9-_]+$/.test(tempId)) {
-                        onUpdateId(tempId);
-                        setIsEditingId(false);
-                      }
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-500 rounded-lg text-sm font-medium transition-colors text-white"
+                    onClick={onRetry}
+                    className="flex items-center gap-2 px-4 py-2 bg-primary-600/20 hover:bg-primary-600/30 border border-primary-500/30 rounded-lg text-sm font-medium transition-colors text-primary-400"
                   >
-                    <Save className="w-4 h-4" />
-                    Save
+                    <RefreshCw className="w-4 h-4" />
+                    Retry
                   </button>
-                  <button
-                    onClick={() => setIsEditingId(false)}
-                    className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors text-slate-200"
-                  >
-                    <X className="w-4 h-4" />
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <code className="block text-2xl md:text-3xl font-mono text-white tracking-tight break-all mb-4">
-                    {myId || "Generating ID..."}
-                  </code>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                      onClick={() => {
-                        setTempId(myId);
-                        setIsEditingId(true);
-                      }}
-                      className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-sm font-medium transition-colors text-slate-200"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                      Edit ID
-                    </button>
-                    <button
-                      onClick={onRandomId}
-                      className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-sm font-medium transition-colors text-slate-200"
-                    >
-                      <Shuffle className="w-4 h-4" />
-                      New ID
-                    </button>
-                    <button
-                      onClick={handleCopyId}
-                      className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-sm font-medium transition-colors text-slate-200"
-                    >
-                      {copied ? (
-                        <Check className="w-4 h-4 text-green-400" />
-                      ) : (
-                        <Copy className="w-4 h-4" />
-                      )}
-                      {copied ? "Copied" : "Copy ID"}
-                    </button>
-                    {peerError && (
-                      <button
-                        onClick={onRetry}
-                        className="flex items-center gap-2 px-4 py-2 bg-primary-600/20 hover:bg-primary-600/30 border border-primary-500/30 rounded-lg text-sm font-medium transition-colors text-primary-400"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                        Retry
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
+                )}
+              </div>
               {peerError && (
                 <div className="mt-3 text-sm text-red-400 font-medium">
                   {peerError}
