@@ -1,24 +1,33 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Peer, DataConnection } from "peerjs";
 import { generateId, getStoredUserId, storeUserId } from "../services/storage";
-import { PeerConnectionStatus } from "../types";
+import { PeerConnectionStatus, PeerConfig } from "../types";
+import { DEFAULT_PEER_CONFIG } from "../constants";
+
+const MAX_CONNECTIONS = 50;
 
 interface UseP2PProps {
+  config?: PeerConfig;
   onMessageReceived: (peerId: string, data: any) => void;
   onConnectionOpened: (peerId: string) => void;
   onConnectionClosed: (peerId: string) => void;
+  onConnectionLimitExceeded?: (disconnectedPeerId: string) => void;
 }
 
 export const useP2P = ({
+  config = DEFAULT_PEER_CONFIG,
   onMessageReceived,
   onConnectionOpened,
   onConnectionClosed,
+  onConnectionLimitExceeded,
 }: UseP2PProps) => {
   const [myId, setMyId] = useState<string>("");
   const [peer, setPeer] = useState<Peer | null>(null);
 
   // Track specific connection objects
   const connections = useRef<Map<string, DataConnection>>(new Map());
+  // Track connection order for oldest detection
+  const connectionOrder = useRef<string[]>([]);
 
   // Track detailed state for each peer ID
   const [connectionStates, setConnectionStates] = useState<
@@ -39,11 +48,33 @@ export const useP2P = ({
       updatePeerState(conn.peer, "connecting");
 
       conn.on("open", () => {
+        // Check connection limit
+        if (connections.current.size >= MAX_CONNECTIONS) {
+          // Disconnect oldest
+          const oldestPeerId = connectionOrder.current[0];
+          if (oldestPeerId) {
+            const oldConn = connections.current.get(oldestPeerId);
+            if (oldConn) {
+              oldConn.close();
+            }
+            connections.current.delete(oldestPeerId);
+            connectionOrder.current = connectionOrder.current.filter(
+              (id) => id !== oldestPeerId
+            );
+            updatePeerState(oldestPeerId, "disconnected");
+            onConnectionClosed(oldestPeerId);
+            if (onConnectionLimitExceeded) {
+              onConnectionLimitExceeded(oldestPeerId);
+            }
+          }
+        }
+
         connections.current.set(conn.peer, conn);
+        connectionOrder.current.push(conn.peer);
         updatePeerState(conn.peer, "connected");
         onConnectionOpened(conn.peer);
 
-        // Broadcast "I'm online" to this peer (no private peer list)
+        // Broadcast "I'm online" to this peer
         conn.send({ type: "presence", status: "online" });
       });
 
@@ -58,6 +89,9 @@ export const useP2P = ({
 
       conn.on("close", () => {
         connections.current.delete(conn.peer);
+        connectionOrder.current = connectionOrder.current.filter(
+          (id) => id !== conn.peer
+        );
         updatePeerState(conn.peer, "disconnected");
         onConnectionClosed(conn.peer);
       });
@@ -87,7 +121,11 @@ export const useP2P = ({
       const PeerClass = (window.Peer as any) || Peer;
 
       const newPeer = new PeerClass(id, {
-        debug: 1,
+        host: config.host,
+        port: config.port,
+        path: config.path,
+        secure: config.secure,
+        debug: config.debug || 0,
       });
 
       newPeer.on("open", (id: string) => {
@@ -141,6 +179,8 @@ export const useP2P = ({
       storeUserId(existingId);
     }
     setMyId(existingId);
+    setMyId(existingId);
+    // Initialize with current config
     const newPeer = initPeer(existingId);
 
     // Cleanup on page unload to prevent "ID already taken" error
@@ -154,7 +194,8 @@ export const useP2P = ({
       newPeer?.destroy();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config]); // Re-init on config change
 
   const updateId = useCallback(
     (newId: string) => {

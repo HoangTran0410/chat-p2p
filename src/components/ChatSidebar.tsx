@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   RefreshCw,
   Shuffle,
+  Settings,
 } from "lucide-react";
 import { ChatSession } from "../types";
 import { formatDistanceToNow } from "date-fns";
@@ -30,6 +31,7 @@ interface ChatSidebarProps {
   isReady: boolean;
   onRetry: () => void;
   onRandomId: () => void;
+  onOpenSettings: () => void;
 }
 
 export const ChatSidebar: React.FC<ChatSidebarProps> = ({
@@ -46,6 +48,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   isReady,
   onRetry,
   onRandomId,
+  onOpenSettings,
 }) => {
   const [newPeerId, setNewPeerId] = useState("");
   const [copied, setCopied] = useState(false);
@@ -128,13 +131,22 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             <MessageSquare className="w-6 h-6 text-primary-500" />
             Ping
           </h1>
-          <button
-            onClick={onShowDashboard}
-            className="md:hidden p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
-            title="View Dashboard"
-          >
-            <LayoutDashboard className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onShowDashboard}
+              className="md:hidden p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
+              title="View Dashboard"
+            >
+              <LayoutDashboard className="w-5 h-5" />
+            </button>
+            <button
+              onClick={onOpenSettings}
+              className="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
+              title="Connection Settings"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+          </div>
         </div>
         <div className="bg-slate-800 rounded-lg p-3">
           <div className="flex items-center justify-between mb-1">
@@ -236,7 +248,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             className="w-full py-2.5 px-4 bg-primary-600 hover:bg-primary-500 text-white rounded-lg flex items-center justify-center gap-2 transition-all font-medium shadow-lg shadow-primary-900/20"
           >
             <Plus className="w-4 h-4" />
-            New Connection
+            New Chat
           </button>
         ) : (
           <form
@@ -355,7 +367,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                             <div className="flex items-center gap-2 shrink-0 ml-2">
                               <button
                                 onClick={(e) => startRenaming(e, chat)}
-                                className="text-slate-500 hover:text-primary-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="hidden md:block text-slate-500 hover:text-primary-400 opacity-0 group-hover:opacity-100 transition-opacity"
                                 title="Rename Contact"
                               >
                                 <Pencil className="w-3 h-3" />
@@ -390,7 +402,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         )}
       </div>
 
-      <div className="p-4 text-center border-t border-slate-800">
+      {/* <div className="p-4 text-center border-t border-slate-800">
         <div className="flex items-center justify-center gap-2 text-xs text-slate-600">
           <Circle
             className={`w-2 h-2 ${
@@ -403,7 +415,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           />
           {peerError ? "Error" : isReady ? "Online" : "Connecting..."}
         </div>
-      </div>
+      </div> */}
     </div>
   );
 };

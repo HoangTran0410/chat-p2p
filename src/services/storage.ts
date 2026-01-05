@@ -1,6 +1,3 @@
-import { ChatSession, Message } from "../types";
-
-const STORAGE_KEY_CHATS = "synapse_chats";
 const STORAGE_KEY_USER_ID = "synapse_user_id";
 
 export const getStoredUserId = (): string | null => {
@@ -9,26 +6,6 @@ export const getStoredUserId = (): string | null => {
 
 export const storeUserId = (id: string): void => {
   localStorage.setItem(STORAGE_KEY_USER_ID, id);
-};
-
-export const getStoredChats = (): Record<string, ChatSession> => {
-  try {
-    const data = localStorage.getItem(STORAGE_KEY_CHATS);
-    return data ? JSON.parse(data) : {};
-  } catch (e) {
-    console.error("Failed to load chats", e);
-    return {};
-  }
-};
-
-export const saveChatSession = (peerId: string, session: ChatSession): void => {
-  const chats = getStoredChats();
-  chats[peerId] = session;
-  localStorage.setItem(STORAGE_KEY_CHATS, JSON.stringify(chats));
-};
-
-export const clearAllChats = (): void => {
-  localStorage.removeItem(STORAGE_KEY_CHATS);
 };
 
 // Word lists for readable ID generation

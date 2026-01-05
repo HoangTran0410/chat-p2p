@@ -1,8 +1,20 @@
+export type MessageType = "text" | "image" | "video" | "file";
+
 export interface Message {
   id: string;
   senderId: string;
-  content: string;
-  timestamp: number;
+  content: string; // Text content or Fallback text for files
+  timestamp: number; // when message was sent
+  receivedAt?: number; // when received by recipient
+  readAt?: number; // when read by recipient
+  status?: "sending" | "sent" | "delivered" | "read" | "failed";
+  type?: MessageType;
+  file?: {
+    name: string;
+    size: number;
+    mimeType: string;
+    data?: Blob | ArrayBuffer | string; // Blob for local/IDB, ArrayBuffer from PeerJS
+  };
 }
 
 export interface ChatSession {
@@ -18,10 +30,39 @@ export interface User {
   name: string;
 }
 
-export type PeerConnectionStatus = 'new' | 'connecting' | 'connected' | 'disconnected' | 'failed';
+export type PeerConnectionStatus =
+  | "new"
+  | "connecting"
+  | "connected"
+  | "disconnected"
+  | "failed";
 
 export enum ConnectionStatus {
-  DISCONNECTED = 'disconnected',
-  CONNECTING = 'connecting',
-  CONNECTED = 'connected',
+  DISCONNECTED = "disconnected",
+  CONNECTING = "connecting",
+  CONNECTED = "connected",
+}
+
+export interface PeerConfig {
+  host: string;
+  port: number;
+  path: string;
+  secure: boolean;
+  debug?: number;
+}
+
+// File transfer constants
+export const FILE_CHUNK_SIZE = 64 * 1024; // 64KB chunks
+export const MAX_FILE_SIZE_WARNING = 50 * 1024 * 1024; // 50MB warning threshold
+
+// Track ongoing file transfers
+export interface FileTransfer {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  totalChunks: number;
+  receivedChunks: Map<number, ArrayBuffer>;
+  progress: number; // 0-100
+  messageType: MessageType;
 }
