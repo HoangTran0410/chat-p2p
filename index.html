@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ping</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              slate: {
+                850: "#151f32",
+                900: "#0f172a",
+                950: "#020617",
+              },
+              primary: {
+                500: "#3b82f6",
+                600: "#2563eb",
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <!-- Import PeerJS globally just in case specific bundler configurations are missing -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script type="module" crossorigin src="./public/index-B4s0x4X5.js"></script>
+    <link rel="modulepreload" crossorigin href="./public/services/storage-D0kpk6bz.js">
+    <link rel="modulepreload" crossorigin href="./public/services/db-j9Cw9oXj.js">
+    <link rel="modulepreload" crossorigin href="./public/components/chatsidebar-VWzYg0VW.js">
+    <link rel="modulepreload" crossorigin href="./public/components/chatwindow-BQTFX7fe.js">
+    <link rel="modulepreload" crossorigin href="./public/components/settingsmodal-1jMb3uNP.js">
+    <link rel="modulepreload" crossorigin href="./public/index-B4s0x4X5.js">
+    <link rel="modulepreload" crossorigin href="./public/vendor-B6XYtufB.js">
+    <link rel="stylesheet" crossorigin href="./public/index-2L8elmPu.css">
+  </head>
+  <body class="bg-slate-950 text-slate-100 antialiased">
+    <div id="root"></div>
+  </body>
+</html>
