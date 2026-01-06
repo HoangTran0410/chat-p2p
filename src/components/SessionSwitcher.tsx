@@ -105,7 +105,7 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
               <span className="text-[10px] text-slate-500 uppercase tracking-wider">
                 Your ID
               </span>
-              <span className="text-sm text-slate-200 font-mono truncate max-w-[140px]">
+              <span className="text-sm text-slate-200 font-mono">
                 {activeSession?.name || activeSessionId}
               </span>
             </div>

@@ -30,6 +30,7 @@ import { Message, FILE_CHUNK_SIZE, MAX_FILE_SIZE_WARNING } from "../types";
 import { ChatSession, PeerConnectionStatus } from "../types";
 import { format } from "date-fns";
 import { generateId } from "../services/storage";
+import { useAppStore } from "../stores";
 
 interface ChatWindowProps {
   myId: string;
@@ -38,7 +39,6 @@ interface ChatWindowProps {
   connectionState: PeerConnectionStatus;
   onSendMessage: (content: string | Partial<Message>) => void;
   onDeleteChat: () => void;
-  onBack: () => void;
   onConnect: () => void;
   onCancelConnection: () => void;
 
@@ -46,10 +46,11 @@ interface ChatWindowProps {
   isReady: boolean;
   activeConnectionsCount: number;
   totalChats: number;
+  totalRooms: number;
 
   // Typing
   isPeerTyping?: boolean;
-  onTyping?: (isTyping: boolean) => void;
+  sendMessage?: (peerId: string, data: any) => boolean;
 
   // Identity actions
   peerError: string | null;
@@ -81,14 +82,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   connectionState,
   onSendMessage,
   onDeleteChat,
-  onBack,
   onConnect,
   onCancelConnection,
   isReady,
   activeConnectionsCount,
   totalChats,
   isPeerTyping = false,
-  onTyping,
+  sendMessage,
   peerError,
   onRetry,
   onRenameChat,
@@ -99,7 +99,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   receivingProgress,
   peerFingerprint,
   isEncrypted,
+  totalRooms,
 }) => {
+  const { backToSidebar } = useAppStore();
+
   const [inputText, setInputText] = useState("");
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -128,14 +131,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     scrollToBottom();
   }, [session?.messages, isPeerTyping]);
 
+  // Internal typing handler
+  const sendTypingEvent = (isTyping: boolean) => {
+    if (sendMessage && peerId && connectionState === "connected") {
+      sendMessage(peerId, { type: "typing", isTyping });
+    }
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
     setInputText(newValue);
 
-    if (onTyping && connectionState === "connected") {
+    if (sendMessage && connectionState === "connected") {
       if (!isTypingRef.current) {
         isTypingRef.current = true;
-        onTyping(true);
+        sendTypingEvent(true);
       }
 
       if (typingTimeoutRef.current) {
@@ -144,7 +154,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       typingTimeoutRef.current = setTimeout(() => {
         isTypingRef.current = false;
-        onTyping(false);
+        sendTypingEvent(false);
       }, 2000);
     }
   };
@@ -157,9 +167,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       // Stop typing immediately on send
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      if (isTypingRef.current && onTyping) {
+      if (isTypingRef.current) {
         isTypingRef.current = false;
-        onTyping(false);
+        sendTypingEvent(false);
       }
     }
   };
@@ -243,11 +253,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   if (!peerId) {
     return (
       <div className="flex-1 flex flex-col h-full bg-slate-950 overflow-y-auto">
-        <div className="flex-1 p-6 md:p-12 max-w-5xl mx-auto w-full flex flex-col gap-8">
+        <div className="flex-1 p-6 md:p-12 max-w-4xl mx-auto w-full flex flex-col">
           {/* Mobile Back Button */}
-          <div className="md:hidden flex items-center mb-2">
+          <div className="md:hidden flex items-center mb-4">
             <button
-              onClick={onBack}
+              onClick={backToSidebar}
               className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
             >
               <ChevronLeft className="w-5 h-5" />
@@ -255,135 +265,85 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             </button>
           </div>
 
-          {/* Dashboard Header */}
-          <div>
-            <h1 className="text-3xl font-bold text-white mb-2">Overview</h1>
-            <p className="text-slate-400">
-              Manage your secure P2P connections and identity.
-            </p>
-          </div>
-
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl flex items-center gap-4">
+          {/* Hero Section */}
+          <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
+            <div className="mb-6">
               <div
-                className={`p-3 rounded-lg ${
+                className={`w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 ${
                   isReady
-                    ? "bg-green-500/10 text-green-500"
-                    : "bg-yellow-500/10 text-yellow-500"
+                    ? "bg-green-500/10 border border-green-500/30"
+                    : "bg-yellow-500/10 border border-yellow-500/30"
                 }`}
               >
-                <Activity className="w-6 h-6" />
+                <Activity
+                  className={`w-10 h-10 ${
+                    isReady ? "text-green-500" : "text-yellow-500 animate-pulse"
+                  }`}
+                />
               </div>
-              <div>
-                <div className="text-sm text-slate-400">Network Status</div>
-                <div className="font-semibold text-lg text-slate-100">
-                  {isReady ? "Online" : "Connecting..."}
-                </div>
-              </div>
-            </div>
-            <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl flex items-center gap-4">
-              <div className="p-3 rounded-lg bg-blue-500/10 text-blue-500">
-                <Users className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="text-sm text-slate-400">Active Sessions</div>
-                <div className="font-semibold text-lg text-slate-100">
-                  {activeConnectionsCount}
-                </div>
-              </div>
-            </div>
-            <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl flex items-center gap-4">
-              <div className="p-3 rounded-lg bg-purple-500/10 text-purple-500">
-                <MessageSquare className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="text-sm text-slate-400">
-                  Total Conversations
-                </div>
-                <div className="font-semibold text-lg text-slate-100">
-                  {totalChats}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Identity Card */}
-          <div className="bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700 rounded-2xl p-6 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-32 bg-primary-600/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-primary-600/20 transition-all duration-700"></div>
-
-            <div className="relative z-10">
-              <h3 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
-                <Shield className="w-5 h-5 text-primary-400" />
-                Your Ping ID
-              </h3>
-              <code className="block text-2xl md:text-3xl font-mono text-white tracking-tight break-all mb-4">
-                {myId || "Generating ID..."}
-              </code>
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={handleCopyId}
-                  className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-sm font-medium transition-colors text-slate-200"
-                >
-                  {copied ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4" />
-                  )}
-                  {copied ? "Copied" : "Copy ID"}
-                </button>
-                <button
-                  onClick={() => {
-                    const shareUrl = `${window.location.origin}${window.location.pathname}#connect=${myId}`;
-                    navigator.clipboard.writeText(shareUrl);
-                    setLinkCopied(true);
-                    setTimeout(() => setLinkCopied(false), 2000);
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary-600/20 hover:bg-primary-600/30 border border-primary-500/30 rounded-lg text-sm font-medium transition-colors text-primary-400"
-                >
-                  {linkCopied ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Share2 className="w-4 h-4" />
-                  )}
-                  {linkCopied ? "Link Copied!" : "Share Invite Link"}
-                </button>
-                {peerError && (
+              <h1 className="text-2xl font-bold text-white mb-2">
+                {isReady ? "You're Online" : "Connecting..."}
+              </h1>
+              <p className="text-slate-400 text-sm max-w-md">
+                {isReady
+                  ? "Your P2P connection is active. Select a chat or room to start messaging."
+                  : "Establishing secure connection to the network..."}
+              </p>
+              {peerError && (
+                <div className="mt-3 flex items-center justify-center gap-2">
+                  <span className="text-sm text-red-400">{peerError}</span>
                   <button
                     onClick={onRetry}
-                    className="flex items-center gap-2 px-4 py-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 rounded-lg text-sm font-medium transition-colors text-red-400"
+                    className="text-sm text-primary-400 hover:text-primary-300 underline"
                   >
-                    <RefreshCw className="w-4 h-4" />
                     Retry
                   </button>
-                )}
-              </div>
-              {peerError && (
-                <div className="mt-3 text-sm text-red-400 font-medium">
-                  {peerError}
                 </div>
               )}
-              <p className="mt-4 text-sm text-slate-400 max-w-2xl">
-                This ID allows others to connect with you securely. Share it
-                only with trusted peers. Connections are established directly
-                between devices.
-              </p>
+            </div>
+
+            {/* Stats Row */}
+            <div className="flex items-center gap-6 text-center">
+              <div className="px-6 py-4 bg-slate-900/50 border border-slate-800 rounded-xl">
+                <div className="text-2xl font-bold text-white">
+                  {activeConnectionsCount}
+                </div>
+                <div className="text-xs text-slate-500 uppercase tracking-wider mt-1">
+                  Active
+                </div>
+              </div>
+              <div className="px-6 py-4 bg-slate-900/50 border border-slate-800 rounded-xl">
+                <div className="text-2xl font-bold text-white">
+                  {totalChats}
+                </div>
+                <div className="text-xs text-slate-500 uppercase tracking-wider mt-1">
+                  Chats
+                </div>
+              </div>
+              <div className="px-6 py-4 bg-slate-900/50 border border-slate-800 rounded-xl">
+                <div className="text-2xl font-bold text-white">
+                  {totalRooms}
+                </div>
+                <div className="text-xs text-slate-500 uppercase tracking-wider mt-1">
+                  Rooms
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Footer Info */}
-          <div className="mt-auto grid grid-cols-1 sm:grid-cols-3 gap-6 text-xs text-slate-500 border-t border-slate-800 pt-8">
-            <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4" />
-              <span>End-to-End Encrypted Transport</span>
+          <div className="flex items-center justify-center gap-6 text-xs text-slate-600 border-t border-slate-800 pt-6">
+            <div className="flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5" />
+              <span>E2E Encrypted</span>
             </div>
-            <div className="flex items-center gap-2">
-              <Globe className="w-4 h-4" />
-              <span>Serverless Architecture</span>
+            <div className="flex items-center gap-1.5">
+              <Globe className="w-3.5 h-3.5" />
+              <span>Serverless</span>
             </div>
-            <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4" />
-              <span>WebRTC P2P Protocol</span>
+            <div className="flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5" />
+              <span>WebRTC</span>
             </div>
           </div>
         </div>
@@ -442,7 +402,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         <div className="h-16 border-b border-slate-800 flex items-center justify-between px-4 bg-slate-950/80 backdrop-blur-sm z-10 sticky top-0">
           <div className="flex items-center gap-3 overflow-hidden">
             <button
-              onClick={onBack}
+              onClick={backToSidebar}
               className="md:hidden p-2 -ml-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-colors"
             >
               <ChevronLeft className="w-5 h-5" />
@@ -537,7 +497,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             </button>
 
             <button
-              onClick={onBack}
+              onClick={backToSidebar}
               className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors hidden md:block"
               title="Close Chat"
             >

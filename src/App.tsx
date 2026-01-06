@@ -8,7 +8,6 @@ import {
   deleteSession as deleteStoredSession,
   getActiveSessionId,
   setActiveSessionId,
-  clearStorage,
 } from "./services/storage";
 import {
   initDB,
@@ -16,7 +15,6 @@ import {
   saveChatToDB,
   deleteChatFromDB,
   deleteAllChatsForSession,
-  clearDB,
 } from "./services/db";
 import { ChatSidebar } from "./components/ChatSidebar";
 import { ChatWindow } from "./components/ChatWindow";
@@ -24,33 +22,55 @@ import { SettingsModal } from "./components/SettingsModal";
 import { SyncModal } from "./components/SyncModal";
 import { NewSessionDialog } from "./components/NewSessionDialog";
 import { KeyChangeWarningModal } from "./components/KeyChangeWarningModal";
+// Group Chat Components
+import { useGroupChat } from "./hooks/useGroupChat";
+import { RoomChatWindow } from "./components/RoomChatWindow";
+import { CreateRoomModal } from "./components/CreateRoomModal";
+import { JoinRoomModal } from "./components/JoinRoomModal";
 import {
   ChatSession,
   Message,
   PeerConfig,
   FILE_CHUNK_SIZE,
   FileTransfer,
-  MessageType,
   UserSession,
   EncryptedPayload,
 } from "./types";
-import { X, RefreshCw } from "lucide-react";
+import { X } from "lucide-react";
 import { DEFAULT_PEER_CONFIG, MAX_CONNECTIONS } from "./constants";
+import { useAppStore } from "./stores";
 
 export default function App() {
+  // Zustand store for UI state
+  const {
+    setViewMode,
+    selectedPeerId,
+    setSelectedPeerId,
+    showMobileDashboard,
+    setShowMobileDashboard,
+    showSettings,
+    showNewSessionDialog,
+    setShowNewSessionDialog,
+    showCreateRoomModal,
+    setShowCreateRoomModal,
+    showJoinRoomModal,
+    setShowJoinRoomModal,
+    pendingConnectPeerId,
+    setPendingConnectPeerId,
+    pendingRoomId,
+    setPendingRoomId,
+  } = useAppStore();
+
+  // Local state (data, not UI)
   const [chats, setChats] = useState<Record<string, ChatSession>>({});
   const [isStorageReady, setIsStorageReady] = useState(false);
-  const [selectedPeerId, setSelectedPeerId] = useState<string | null>(null);
-  const [showMobileDashboard, setShowMobileDashboard] = useState(false);
   const [typingStates, setTypingStates] = useState<Record<string, boolean>>({});
 
   // Session management state
   const [sessions, setSessions] = useState<UserSession[]>([]);
   const [activeSessionId, setActiveSessionIdState] = useState<string>("");
-  const [showNewSessionDialog, setShowNewSessionDialog] = useState(false);
 
-  // Settings state
-  const [showSettings, setShowSettings] = useState(false);
+  // Peer config state
   const [peerConfig, setPeerConfig] = useState<PeerConfig>(() => {
     const saved = localStorage.getItem("peer_config");
     return saved ? JSON.parse(saved) : DEFAULT_PEER_CONFIG;
@@ -75,25 +95,6 @@ export default function App() {
     oldFingerprint: string;
     newFingerprint: string;
   } | null>(null);
-
-  // Auto-connect from URL hash
-  const [pendingConnectPeerId, setPendingConnectPeerId] = useState<
-    string | null
-  >(() => {
-    // Check URL hash for peer ID to connect to (format: #connect=PEER_ID)
-    const hash = window.location.hash;
-    if (hash.startsWith("#connect=")) {
-      const peerId = hash.slice(9); // Remove "#connect="
-      // Clear the hash from URL
-      window.history.replaceState(
-        null,
-        "",
-        window.location.pathname + window.location.search
-      );
-      return peerId;
-    }
-    return null;
-  });
 
   // Chunked file transfer state
   const [sendingProgress, setSendingProgress] = useState<{
@@ -127,6 +128,11 @@ export default function App() {
     () => {}
   );
   const hasPeerKeyRef = useRef<(peerId: string) => boolean>(() => false);
+
+  // Group chat ref (needed before hook is called)
+  const handleRoomProtocolRef = useRef<(peerId: string, data: any) => boolean>(
+    () => false
+  );
 
   // Load initial sessions and chats
   useEffect(() => {
@@ -181,6 +187,12 @@ export default function App() {
 
   const handleMessageReceived = useCallback(
     (peerId: string, data: any) => {
+      // Handle Room Protocol Messages first (route to group chat hook)
+      if (data && typeof data === "object" && data.type?.startsWith("room_")) {
+        handleRoomProtocolRef.current(peerId, data);
+        return;
+      }
+
       // Handle Typing Events
       if (data && typeof data === "object" && data.type === "typing") {
         setTypingStates((prev) => ({
@@ -533,33 +545,36 @@ export default function App() {
     [selectedPeerId]
   );
 
-  const handleConnectionOpened = useCallback((peerId: string) => {
-    // If we don't have a chat session for this peer, create one
-    setChats((prev) => {
-      if (!prev[peerId]) {
-        const newSession: ChatSession = {
-          peerId,
-          messages: [],
-          lastUpdated: Date.now(),
-          unreadCount: 0,
-        };
-        saveChatToDB(activeSessionIdRef.current, newSession);
-        return { ...prev, [peerId]: newSession };
-      }
-      return prev;
-    });
+  const handleConnectionOpened = useCallback(
+    (peerId: string) => {
+      // If we don't have a chat session for this peer, create one
+      setChats((prev) => {
+        if (!prev[peerId]) {
+          const newSession: ChatSession = {
+            peerId,
+            messages: [],
+            lastUpdated: Date.now(),
+            unreadCount: 0,
+          };
+          saveChatToDB(activeSessionIdRef.current, newSession);
+          return { ...prev, [peerId]: newSession };
+        }
+        return prev;
+      });
 
-    // Initiate E2EE key exchange
-    createKeyExchangeRef.current().then((payload) => {
-      if (payload) {
-        sendMessageRef.current(peerId, { type: "key_exchange", ...payload });
-      }
-    });
+      // Initiate E2EE key exchange
+      createKeyExchangeRef.current().then((payload) => {
+        if (payload) {
+          sendMessageRef.current(peerId, { type: "key_exchange", ...payload });
+        }
+      });
 
-    if (window.innerWidth >= 768) {
-      setSelectedPeerId((prev) => (prev ? prev : peerId));
-    }
-  }, []);
+      if (window.innerWidth >= 768 && !selectedPeerId) {
+        setSelectedPeerId(peerId);
+      }
+    },
+    [selectedPeerId]
+  );
 
   const handleConnectionClosed = useCallback((peerId: string) => {
     // State is updated automatically via useP2P connectionStates
@@ -632,6 +647,32 @@ export default function App() {
     hasPeerKeyRef.current = hasPeerKey;
   }, [encrypt, decrypt, handleKeyExchange, createKeyExchange, hasPeerKey]);
 
+  // Group Chat Hook
+  const {
+    rooms,
+    activeRoomId,
+    setActiveRoomId,
+    createRoom,
+    joinRoom,
+    leaveRoom,
+    closeRoom,
+    sendRoomMessage,
+    isHost: isRoomHost,
+    handleRoomProtocol,
+  } = useGroupChat({
+    myId,
+    sendMessage,
+    connectToPeer,
+    disconnectPeer,
+    connectionStates,
+    isReady,
+  });
+
+  // Update group chat ref
+  useEffect(() => {
+    handleRoomProtocolRef.current = handleRoomProtocol;
+  }, [handleRoomProtocol]);
+
   // Update ref when sendMessage is available
   useEffect(() => {
     sendMessageRef.current = sendMessage;
@@ -641,6 +682,17 @@ export default function App() {
   useEffect(() => {
     handleMessageReceivedRef.current = handleMessageReceived;
   }, [handleMessageReceived]);
+
+  // Auto-join room from URL hash when ready
+  useEffect(() => {
+    if (isReady && pendingRoomId) {
+      console.log("Auto-joining room from URL:", pendingRoomId);
+      // Extract host peer ID from room ID (format: room-{hostPeerId})
+      joinRoom(pendingRoomId);
+      setViewMode("rooms");
+      setPendingRoomId(null);
+    }
+  }, [isReady, pendingRoomId, joinRoom]);
 
   // Auto-connect from URL hash when ready
   useEffect(() => {
@@ -875,12 +927,6 @@ export default function App() {
     setSendingProgress(null);
   };
 
-  const handleTyping = (isTyping: boolean) => {
-    if (selectedPeerId) {
-      sendMessage(selectedPeerId, { type: "typing", isTyping });
-    }
-  };
-
   const handleResendMessage = (messageId: string) => {
     if (!selectedPeerId) return;
 
@@ -1018,11 +1064,6 @@ export default function App() {
     });
   };
 
-  const handleBackToSidebar = () => {
-    setSelectedPeerId(null);
-    setShowMobileDashboard(false);
-  };
-
   // Session Management Handlers
   const handleSwitchSession = async (sessionId: string) => {
     if (sessionId === activeSessionId) return;
@@ -1042,10 +1083,6 @@ export default function App() {
     } catch (e) {
       console.error("Failed to load chats for session:", e);
     }
-  };
-
-  const handleCreateNewSession = () => {
-    setShowNewSessionDialog(true);
   };
 
   const handleConfirmNewSession = async () => {
@@ -1091,20 +1128,6 @@ export default function App() {
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
   };
 
-  const handleClearData = async () => {
-    try {
-      // Clear IndexedDB
-      await clearDB();
-      // Clear LocalStorage
-      clearStorage();
-      // Reload page to reset state entirely
-      window.location.reload();
-    } catch (e) {
-      console.error("Failed to clear data:", e);
-      alert("Failed to clear data completely. Please try refreshing.");
-    }
-  };
-
   const activeConnectionIds = Object.keys(connectionStates).filter(
     (id) => connectionStates[id] === "connected"
   );
@@ -1120,21 +1143,6 @@ export default function App() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-950 text-slate-100 font-sans selection:bg-primary-500/30 relative">
-      {/* Toast Notification for Connection Errors */}
-      {connectionError && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-4">
-          <div className="bg-red-500/10 border border-red-500/50 backdrop-blur-md text-red-200 px-4 py-3 rounded-lg shadow-xl flex items-center gap-3">
-            <span className="text-sm font-medium">{connectionError}</span>
-            <button
-              onClick={resetConnectionError}
-              className="p-1 hover:bg-red-500/20 rounded-full transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Connection Limit Warning Toast */}
       {limitWarning && (
         <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-4">
@@ -1153,7 +1161,11 @@ export default function App() {
       {/* Sidebar - Hidden on mobile if chat or dashboard is open */}
       <div
         className={`
-        ${selectedPeerId || showMobileDashboard ? "hidden md:flex" : "flex"}
+        ${
+          selectedPeerId || activeRoomId || showMobileDashboard
+            ? "hidden md:flex"
+            : "flex"
+        }
         w-full md:w-80 flex-col border-r border-slate-800
       `}
       >
@@ -1161,11 +1173,10 @@ export default function App() {
           myId={myId}
           chats={chats}
           activeConnections={activeConnectionIds}
-          selectedPeerId={selectedPeerId}
           onSelectPeer={(id) => {
             setSelectedPeerId(id);
+            setActiveRoomId(null);
             setShowMobileDashboard(false);
-            // Auto-reconnect if not connected
             if (connectionStates[id] !== "connected") {
               connectToPeer(id);
             }
@@ -1176,60 +1187,80 @@ export default function App() {
           peerError={peerError}
           isReady={isReady}
           onRetry={() => updateId(myId)}
-          onOpenSettings={() => setShowSettings(true)}
-          // Session management props
           sessions={sessions}
           activeSessionId={activeSessionId}
           onSwitchSession={handleSwitchSession}
-          onCreateNewSession={handleCreateNewSession}
+          onCreateNewSession={() => setShowNewSessionDialog(true)}
           onDeleteSession={handleDeleteSession}
           isReconnecting={isReconnecting}
+          rooms={rooms}
+          onSelectRoom={(roomId) => {
+            setActiveRoomId(roomId);
+            setSelectedPeerId(null);
+          }}
         />
       </div>
 
       {/* Main Window - Visible on mobile if chat or dashboard is open */}
       <div
         className={`
-        ${selectedPeerId || showMobileDashboard ? "flex" : "hidden md:flex"}
+        ${
+          selectedPeerId || activeRoomId || showMobileDashboard
+            ? "flex"
+            : "hidden md:flex"
+        }
         flex-1 flex-col min-w-0 bg-slate-950
       `}
       >
-        <ChatWindow
-          myId={myId}
-          peerId={selectedPeerId || ""}
-          session={selectedPeerId ? chats[selectedPeerId] : undefined}
-          connectionState={
-            selectedPeerId
-              ? connectionStates[selectedPeerId] || "disconnected"
-              : "disconnected"
-          }
-          onSendMessage={handleSendMessage}
-          onDeleteChat={handleDeleteChat}
-          onBack={handleBackToSidebar}
-          onConnect={() => selectedPeerId && handleConnect(selectedPeerId)}
-          onCancelConnection={() =>
-            selectedPeerId && disconnectPeer(selectedPeerId)
-          }
-          isReady={isReady}
-          activeConnectionsCount={activeConnectionsCount}
-          totalChats={Object.keys(chats).length}
-          isPeerTyping={selectedPeerId ? typingStates[selectedPeerId] : false}
-          onTyping={handleTyping}
-          peerError={peerError}
-          onRetry={() => updateId(myId)}
-          onRenameChat={(newName) =>
-            selectedPeerId && handleRenameChat(selectedPeerId, newName)
-          }
-          onResendMessage={handleResendMessage}
-          onRequestSync={handleRequestSync}
-          onSendFileChunked={handleSendFileChunked}
-          sendingProgress={sendingProgress}
-          receivingProgress={receivingProgress}
-          peerFingerprint={
-            selectedPeerId ? getPeerFingerprint(selectedPeerId) : null
-          }
-          isEncrypted={selectedPeerId ? hasPeerKey(selectedPeerId) : false}
-        />
+        {activeRoomId && rooms[activeRoomId] ? (
+          <RoomChatWindow
+            myId={myId}
+            room={rooms[activeRoomId]}
+            onSendMessage={sendRoomMessage}
+            onLeaveRoom={isRoomHost(activeRoomId) ? closeRoom : leaveRoom}
+            onBack={() => {
+              setActiveRoomId(null);
+            }}
+            isHost={isRoomHost(activeRoomId)}
+          />
+        ) : (
+          <ChatWindow
+            myId={myId}
+            peerId={selectedPeerId || ""}
+            session={selectedPeerId ? chats[selectedPeerId] : undefined}
+            connectionState={
+              selectedPeerId
+                ? connectionStates[selectedPeerId] || "disconnected"
+                : "disconnected"
+            }
+            onSendMessage={handleSendMessage}
+            onDeleteChat={handleDeleteChat}
+            onConnect={() => selectedPeerId && handleConnect(selectedPeerId)}
+            onCancelConnection={() =>
+              selectedPeerId && disconnectPeer(selectedPeerId)
+            }
+            isReady={isReady}
+            activeConnectionsCount={activeConnectionsCount}
+            totalChats={Object.keys(chats).length}
+            totalRooms={Object.keys(rooms).length}
+            isPeerTyping={selectedPeerId ? typingStates[selectedPeerId] : false}
+            sendMessage={sendMessage}
+            peerError={peerError}
+            onRetry={() => updateId(myId)}
+            onRenameChat={(newName) =>
+              selectedPeerId && handleRenameChat(selectedPeerId, newName)
+            }
+            onResendMessage={handleResendMessage}
+            onRequestSync={handleRequestSync}
+            onSendFileChunked={handleSendFileChunked}
+            sendingProgress={sendingProgress}
+            receivingProgress={receivingProgress}
+            peerFingerprint={
+              selectedPeerId ? getPeerFingerprint(selectedPeerId) : null
+            }
+            isEncrypted={selectedPeerId ? hasPeerKey(selectedPeerId) : false}
+          />
+        )}
       </div>
 
       {/* Sync Modal */}
@@ -1255,8 +1286,6 @@ export default function App() {
         <SettingsModal
           config={peerConfig}
           onSave={handleSaveConfig}
-          onClose={() => setShowSettings(false)}
-          onClearData={handleClearData}
           myFingerprint={myFingerprint}
           onExportKeys={exportMyKeys}
           onImportKeys={importMyKeys}
@@ -1281,6 +1310,31 @@ export default function App() {
             setKeyChangeWarning(null);
           }
         }}
+      />
+
+      {/* Create Room Modal */}
+      <CreateRoomModal
+        isOpen={showCreateRoomModal}
+        onClose={() => setShowCreateRoomModal(false)}
+        onCreateRoom={(name) => {
+          const roomId = createRoom(name);
+          // setShowCreateRoomModal(false);
+          setViewMode("rooms");
+          return roomId;
+        }}
+        myId={myId}
+      />
+
+      {/* Join Room Modal */}
+      <JoinRoomModal
+        isOpen={showJoinRoomModal}
+        onClose={() => setShowJoinRoomModal(false)}
+        onJoinRoom={(hostPeerId) => {
+          joinRoom(hostPeerId);
+          setShowJoinRoomModal(false);
+          setViewMode("rooms");
+        }}
+        pendingRoomId={pendingRoomId}
       />
     </div>
   );

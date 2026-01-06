@@ -12,12 +12,13 @@ import {
 } from "lucide-react";
 import { PeerConfig } from "../types";
 import { DEFAULT_PEER_CONFIG } from "../constants";
+import { clearDB } from "../services/db";
+import { clearStorage } from "../services/storage";
+import { useAppStore } from "../stores";
 
 interface SettingsModalProps {
   config: PeerConfig;
   onSave: (config: PeerConfig) => void;
-  onClose: () => void;
-  onClearData: () => void;
   // E2EE props
   myFingerprint?: string | null;
   onExportKeys?: () => Promise<string | null>;
@@ -27,12 +28,12 @@ interface SettingsModalProps {
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   config,
   onSave,
-  onClose,
-  onClearData,
   myFingerprint,
   onExportKeys,
   onImportKeys,
 }) => {
+  const { setShowSettings } = useAppStore();
+
   const [formData, setFormData] = useState<PeerConfig>(config);
   const [copied, setCopied] = useState(false);
   const [importStatus, setImportStatus] = useState<
@@ -53,8 +54,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }));
   };
 
+  const handleClearData = async () => {
+    try {
+      // Clear IndexedDB
+      await clearDB();
+      // Clear LocalStorage
+      clearStorage();
+      // Reload page to reset state entirely
+      window.location.reload();
+    } catch (e) {
+      console.error("Failed to clear data:", e);
+      alert("Failed to clear data completely. Please try refreshing.");
+    }
+  };
+
   const handleReset = () => {
     setFormData(DEFAULT_PEER_CONFIG);
+  };
+
+  const onClose = () => {
+    setShowSettings(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -308,7 +327,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     "Are you sure? This will wipe ALL your data including chat history and sessions. This action cannot be undone."
                   )
                 ) {
-                  onClearData();
+                  handleClearData();
                 }
               }}
               className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-500 text-xs font-medium rounded transition-colors"
