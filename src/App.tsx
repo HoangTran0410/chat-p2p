@@ -478,6 +478,7 @@ export default function App() {
     isReconnecting,
   } = useP2P({
     config: peerConfig,
+    sessionId: activeSessionId,
     onMessageReceived: handleMessageReceived,
     onConnectionOpened: handleConnectionOpened,
     onConnectionClosed: handleConnectionClosed,
@@ -855,9 +856,6 @@ export default function App() {
     setActiveSessionId(sessionId);
     setActiveSessionIdState(sessionId);
 
-    // Update P2P with new ID
-    updateId(sessionId);
-
     // Load chats for new session
     try {
       const storedChats = await getAllChatsFromDB(sessionId);
@@ -888,9 +886,6 @@ export default function App() {
     // Switch to new session
     setActiveSessionId(newId);
     setActiveSessionIdState(newId);
-
-    // Update P2P with new ID
-    updateId(newId);
 
     // Clear chats (new session has no chats)
     setChats({});

@@ -5,6 +5,7 @@ import {
   Pencil,
   LayoutDashboard,
   Settings,
+  Github,
 } from "lucide-react";
 import { ChatSession, UserSession } from "../types";
 import { formatDistanceToNow } from "date-fns";
@@ -122,6 +123,15 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             >
               <Settings className="w-5 h-5" />
             </button>
+            <a
+              href="https://github.com/HoangTran0410/chat-p2p"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
+              title="GitHub Repo"
+            >
+              <Github className="w-5 h-5" />
+            </a>
           </div>
         </div>
 

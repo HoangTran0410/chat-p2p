@@ -6,6 +6,7 @@ import { DEFAULT_PEER_CONFIG, MAX_CONNECTIONS } from "../constants";
 
 interface UseP2PProps {
   config?: PeerConfig;
+  sessionId: string;
   onMessageReceived: (peerId: string, data: any) => void;
   onConnectionOpened: (peerId: string) => void;
   onConnectionClosed: (peerId: string) => void;
@@ -14,6 +15,7 @@ interface UseP2PProps {
 
 export const useP2P = ({
   config = DEFAULT_PEER_CONFIG,
+  sessionId,
   onMessageReceived,
   onConnectionOpened,
   onConnectionClosed,
@@ -207,16 +209,17 @@ export const useP2P = ({
     [handleConnection]
   );
 
-  // Initial load
+  // React to sessionId changes
   useEffect(() => {
-    let existingId = getStoredUserId();
-    if (!existingId) {
-      existingId = generateId();
-      storeUserId(existingId);
-    }
-    setMyId(existingId);
+    if (!sessionId) return;
+
+    // Set new ID and init
+    setMyId(sessionId);
+    // Sync to legacy storage for consistency, though App.tsx is source of truth
+    storeUserId(sessionId);
+
     // Initialize with current config
-    const newPeer = initPeer(existingId);
+    const newPeer = initPeer(sessionId);
 
     // Cleanup on page unload to prevent "ID already taken" error
     const handleUnload = () => {
@@ -229,7 +232,7 @@ export const useP2P = ({
       newPeer?.destroy();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config]); // Re-init on config change
+  }, [sessionId, config]); // Re-init on config or session change
 
   const updateId = useCallback(
     (newId: string) => {
