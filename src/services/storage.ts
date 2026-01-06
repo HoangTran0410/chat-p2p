@@ -1,13 +1,3 @@
-const STORAGE_KEY_USER_ID = "synapse_user_id";
-
-export const getStoredUserId = (): string | null => {
-  return localStorage.getItem(STORAGE_KEY_USER_ID);
-};
-
-export const storeUserId = (id: string): void => {
-  localStorage.setItem(STORAGE_KEY_USER_ID, id);
-};
-
 const ADJECTIVES = [
   // Cũ
   "swift",
@@ -241,8 +231,13 @@ export const generateId = (): string => {
 
 import { UserSession } from "../types";
 
-const STORAGE_KEY_SESSIONS = "synapse_sessions";
-const STORAGE_KEY_ACTIVE_SESSION = "synapse_active_session";
+const STORAGE_KEY_SESSIONS = "ping_sessions";
+const STORAGE_KEY_ACTIVE_SESSION = "ping_active_session";
+
+export const clearStorage = () => {
+  localStorage.removeItem(STORAGE_KEY_SESSIONS);
+  localStorage.removeItem(STORAGE_KEY_ACTIVE_SESSION);
+};
 
 export const getStoredSessions = (): UserSession[] => {
   const data = localStorage.getItem(STORAGE_KEY_SESSIONS);

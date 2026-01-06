@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Peer, DataConnection } from "peerjs";
-import { generateId, getStoredUserId, storeUserId } from "../services/storage";
 import { PeerConnectionStatus, PeerConfig } from "../types";
 import { DEFAULT_PEER_CONFIG, MAX_CONNECTIONS } from "../constants";
 
@@ -215,8 +214,6 @@ export const useP2P = ({
 
     // Set new ID and init
     setMyId(sessionId);
-    // Sync to legacy storage for consistency, though App.tsx is source of truth
-    storeUserId(sessionId);
 
     // Initialize with current config
     const newPeer = initPeer(sessionId);
@@ -248,8 +245,6 @@ export const useP2P = ({
       setPeerError(null);
       setConnectionError(null);
 
-      // Set new ID and init
-      storeUserId(newId);
       setMyId(newId);
       initPeer(newId);
     },

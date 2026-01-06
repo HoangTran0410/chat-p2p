@@ -7,6 +7,7 @@ import {
   deleteSession as deleteStoredSession,
   getActiveSessionId,
   setActiveSessionId,
+  clearStorage,
 } from "./services/storage";
 import {
   initDB,
@@ -14,6 +15,7 @@ import {
   saveChatToDB,
   deleteChatFromDB,
   deleteAllChatsForSession,
+  clearDB,
 } from "./services/db";
 import { ChatSidebar } from "./components/ChatSidebar";
 import { ChatWindow } from "./components/ChatWindow";
@@ -912,6 +914,20 @@ export default function App() {
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
   };
 
+  const handleClearData = async () => {
+    try {
+      // Clear IndexedDB
+      await clearDB();
+      // Clear LocalStorage
+      clearStorage();
+      // Reload page to reset state entirely
+      window.location.reload();
+    } catch (e) {
+      console.error("Failed to clear data:", e);
+      alert("Failed to clear data completely. Please try refreshing.");
+    }
+  };
+
   const activeConnectionIds = Object.keys(connectionStates).filter(
     (id) => connectionStates[id] === "connected"
   );
@@ -1154,6 +1170,7 @@ export default function App() {
           config={peerConfig}
           onSave={handleSaveConfig}
           onClose={() => setShowSettings(false)}
+          onClearData={handleClearData}
         />
       )}
     </div>

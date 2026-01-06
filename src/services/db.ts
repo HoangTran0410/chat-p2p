@@ -1,5 +1,6 @@
 import { ChatSession } from "../types";
 
+// Add to existing imports/constants if needed, or just append the function
 const DB_NAME = "ChatP2P_v2"; // Version bump for session support
 const STORE_NAME = "chat_sessions";
 const VERSION = 1;
@@ -176,5 +177,25 @@ export const deleteAllChatsForSession = (sessionId: string): Promise<void> => {
     };
 
     request.onerror = () => reject(request.error);
+  });
+};
+
+export const clearDB = (): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(DB_NAME);
+
+    request.onsuccess = () => {
+      resolve();
+    };
+
+    request.onerror = () => {
+      reject(request.error);
+    };
+
+    request.onblocked = () => {
+      console.warn("Database deletion blocked");
+      // Still reject or handle? Usually reload fixes this, but let's reject for now
+      reject(new Error("Database deletion blocked"));
+    };
   });
 };

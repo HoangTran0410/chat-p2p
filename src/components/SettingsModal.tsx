@@ -7,12 +7,14 @@ interface SettingsModalProps {
   config: PeerConfig;
   onSave: (config: PeerConfig) => void;
   onClose: () => void;
+  onClearData: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   config,
   onSave,
   onClose,
+  onClearData,
 }) => {
   const [formData, setFormData] = useState<PeerConfig>(config);
 
@@ -45,7 +47,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="p-4 border-b border-slate-800 flex items-center justify-between">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <Server className="w-5 h-5 text-primary-500" />
-            Connection Settings
+            Settings
           </h2>
           <button
             onClick={onClose}
@@ -164,6 +166,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
         </form>
+
+        {/* Danger Zone */}
+        <div className="px-6 py-4 bg-red-500/5 border-t border-red-500/20">
+          <h3 className="text-xs font-bold text-red-500 uppercase tracking-wider mb-2">
+            Danger Zone
+          </h3>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-red-400/80">
+              Clear all chats, sessions, and local data.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                if (
+                  confirm(
+                    "Are you sure? This will wipe ALL your data including chat history and sessions. This action cannot be undone."
+                  )
+                ) {
+                  onClearData();
+                }
+              }}
+              className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-500 text-xs font-medium rounded transition-colors"
+            >
+              Clear All Data
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
