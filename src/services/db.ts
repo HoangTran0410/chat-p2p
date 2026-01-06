@@ -1,9 +1,11 @@
-import { ChatSession } from "../types";
+import { ChatSession, StoredIdentityKeys, PeerKeyInfo } from "../types";
 
 // Add to existing imports/constants if needed, or just append the function
 const DB_NAME = "ChatP2P_v2"; // Version bump for session support
 const STORE_NAME = "chat_sessions";
-const VERSION = 1;
+const IDENTITY_KEYS_STORE = "identity_keys";
+const PEER_KEYS_STORE = "peer_keys";
+const VERSION = 2; // Bumped for E2EE support
 
 // Internal storage type with session info
 interface StoredChatSession extends ChatSession {
@@ -19,10 +21,25 @@ export const initDB = (): Promise<void> => {
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
+
+      // Chat sessions store
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         const store = db.createObjectStore(STORE_NAME, { keyPath: "_key" });
         // Index by sessionId for efficient queries
         store.createIndex("sessionId", "sessionId", { unique: false });
+      }
+
+      // Identity keys store (one per session)
+      if (!db.objectStoreNames.contains(IDENTITY_KEYS_STORE)) {
+        db.createObjectStore(IDENTITY_KEYS_STORE, { keyPath: "sessionId" });
+      }
+
+      // Peer keys store (track peer identity keys)
+      if (!db.objectStoreNames.contains(PEER_KEYS_STORE)) {
+        const peerStore = db.createObjectStore(PEER_KEYS_STORE, {
+          keyPath: "peerId",
+        });
+        peerStore.createIndex("fingerprint", "fingerprint", { unique: false });
       }
     };
 
@@ -197,5 +214,161 @@ export const clearDB = (): Promise<void> => {
       // Still reject or handle? Usually reload fixes this, but let's reject for now
       reject(new Error("Database deletion blocked"));
     };
+  });
+};
+
+// ==================== Identity Keys ====================
+
+export const saveIdentityKeys = (keys: StoredIdentityKeys): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, VERSION);
+
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction(IDENTITY_KEYS_STORE, "readwrite");
+      const store = transaction.objectStore(IDENTITY_KEYS_STORE);
+
+      const putRequest = store.put(keys);
+
+      putRequest.onsuccess = () => {
+        db.close();
+        resolve();
+      };
+      putRequest.onerror = () => {
+        db.close();
+        reject(putRequest.error);
+      };
+    };
+
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const getIdentityKeys = (
+  sessionId: string
+): Promise<StoredIdentityKeys | null> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, VERSION);
+
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction(IDENTITY_KEYS_STORE, "readonly");
+      const store = transaction.objectStore(IDENTITY_KEYS_STORE);
+
+      const getRequest = store.get(sessionId);
+
+      getRequest.onsuccess = () => {
+        db.close();
+        resolve(getRequest.result || null);
+      };
+      getRequest.onerror = () => {
+        db.close();
+        reject(getRequest.error);
+      };
+    };
+
+    request.onerror = () => reject(request.error);
+  });
+};
+
+// ==================== Peer Keys ====================
+
+export const savePeerKey = (peerKey: PeerKeyInfo): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, VERSION);
+
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction(PEER_KEYS_STORE, "readwrite");
+      const store = transaction.objectStore(PEER_KEYS_STORE);
+
+      const putRequest = store.put(peerKey);
+
+      putRequest.onsuccess = () => {
+        db.close();
+        resolve();
+      };
+      putRequest.onerror = () => {
+        db.close();
+        reject(putRequest.error);
+      };
+    };
+
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const getPeerKey = (peerId: string): Promise<PeerKeyInfo | null> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, VERSION);
+
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction(PEER_KEYS_STORE, "readonly");
+      const store = transaction.objectStore(PEER_KEYS_STORE);
+
+      const getRequest = store.get(peerId);
+
+      getRequest.onsuccess = () => {
+        db.close();
+        resolve(getRequest.result || null);
+      };
+      getRequest.onerror = () => {
+        db.close();
+        reject(getRequest.error);
+      };
+    };
+
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const getAllPeerKeys = (): Promise<PeerKeyInfo[]> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, VERSION);
+
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction(PEER_KEYS_STORE, "readonly");
+      const store = transaction.objectStore(PEER_KEYS_STORE);
+
+      const getAllRequest = store.getAll();
+
+      getAllRequest.onsuccess = () => {
+        db.close();
+        resolve(getAllRequest.result || []);
+      };
+      getAllRequest.onerror = () => {
+        db.close();
+        reject(getAllRequest.error);
+      };
+    };
+
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const deletePeerKey = (peerId: string): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, VERSION);
+
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction(PEER_KEYS_STORE, "readwrite");
+      const store = transaction.objectStore(PEER_KEYS_STORE);
+
+      const deleteRequest = store.delete(peerId);
+
+      deleteRequest.onsuccess = () => {
+        db.close();
+        resolve();
+      };
+      deleteRequest.onerror = () => {
+        db.close();
+        reject(deleteRequest.error);
+      };
+    };
+
+    request.onerror = () => reject(request.error);
   });
 };

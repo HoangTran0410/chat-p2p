@@ -6,6 +6,8 @@ import {
   LayoutDashboard,
   Settings,
   Github,
+  Share2,
+  Check,
 } from "lucide-react";
 import { ChatSession, UserSession } from "../types";
 import { formatDistanceToNow } from "date-fns";
@@ -55,6 +57,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 }) => {
   const [newPeerId, setNewPeerId] = useState("");
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
 
   // Chat Renaming state
@@ -152,6 +155,23 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             {peerError}
           </div>
         )}
+        {/* Share Link Button */}
+        <button
+          onClick={() => {
+            const shareUrl = `${window.location.origin}${window.location.pathname}#connect=${myId}`;
+            navigator.clipboard.writeText(shareUrl);
+            setLinkCopied(true);
+            setTimeout(() => setLinkCopied(false), 2000);
+          }}
+          className="mt-3 w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg flex items-center justify-center gap-2 text-sm font-medium transition-colors text-slate-300"
+        >
+          {linkCopied ? (
+            <Check className="w-4 h-4 text-green-400" />
+          ) : (
+            <Share2 className="w-4 h-4" />
+          )}
+          {linkCopied ? "Link Copied!" : "Share Invite Link"}
+        </button>
       </div>
 
       {/* New Chat Button */}

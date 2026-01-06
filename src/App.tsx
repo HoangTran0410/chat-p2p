@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useP2P } from "./hooks/useP2P";
+import { useEncryption } from "./hooks/useEncryption";
 import {
   generateId,
   getStoredSessions,
@@ -20,6 +21,9 @@ import {
 import { ChatSidebar } from "./components/ChatSidebar";
 import { ChatWindow } from "./components/ChatWindow";
 import { SettingsModal } from "./components/SettingsModal";
+import { SyncModal } from "./components/SyncModal";
+import { NewSessionDialog } from "./components/NewSessionDialog";
+import { KeyChangeWarningModal } from "./components/KeyChangeWarningModal";
 import {
   ChatSession,
   Message,
@@ -28,8 +32,9 @@ import {
   FileTransfer,
   MessageType,
   UserSession,
+  EncryptedPayload,
 } from "./types";
-import { X, RefreshCw, AlertTriangle } from "lucide-react";
+import { X, RefreshCw } from "lucide-react";
 import { DEFAULT_PEER_CONFIG, MAX_CONNECTIONS } from "./constants";
 
 export default function App() {
@@ -64,6 +69,32 @@ export default function App() {
   // Connection limit warning
   const [limitWarning, setLimitWarning] = useState<string | null>(null);
 
+  // E2EE state
+  const [keyChangeWarning, setKeyChangeWarning] = useState<{
+    peerId: string;
+    oldFingerprint: string;
+    newFingerprint: string;
+  } | null>(null);
+
+  // Auto-connect from URL hash
+  const [pendingConnectPeerId, setPendingConnectPeerId] = useState<
+    string | null
+  >(() => {
+    // Check URL hash for peer ID to connect to (format: #connect=PEER_ID)
+    const hash = window.location.hash;
+    if (hash.startsWith("#connect=")) {
+      const peerId = hash.slice(9); // Remove "#connect="
+      // Clear the hash from URL
+      window.history.replaceState(
+        null,
+        "",
+        window.location.pathname + window.location.search
+      );
+      return peerId;
+    }
+    return null;
+  });
+
   // Chunked file transfer state
   const [sendingProgress, setSendingProgress] = useState<{
     fileId: string;
@@ -86,6 +117,16 @@ export default function App() {
   const sendMessageRef = useRef<(peerId: string, data: any) => boolean>(
     () => false
   );
+
+  // Refs for E2EE functions (needed before useEncryption is called)
+  const handleKeyExchangeRef = useRef<
+    (peerId: string, payload: any) => Promise<boolean>
+  >(async () => false);
+  const createKeyExchangeRef = useRef<() => Promise<any>>(async () => null);
+  const handleMessageReceivedRef = useRef<(peerId: string, data: any) => void>(
+    () => {}
+  );
+  const hasPeerKeyRef = useRef<(peerId: string) => boolean>(() => false);
 
   // Load initial sessions and chats
   useEffect(() => {
@@ -151,6 +192,56 @@ export default function App() {
 
       // Handle Presence - peer is online (no action needed, connection status handles it)
       if (data && typeof data === "object" && data.type === "presence") {
+        return;
+      }
+
+      // Handle Key Exchange (E2EE)
+      if (data && typeof data === "object" && data.type === "key_exchange") {
+        // Check if we already have a key with this peer (to prevent infinite loop)
+        const alreadyHaveKey = hasPeerKeyRef.current(peerId);
+
+        handleKeyExchangeRef.current(peerId, data).then((success) => {
+          if (success) {
+            console.log("Key exchange completed with", peerId);
+            // Only send our key exchange back if we didn't have one before
+            // This prevents infinite ping-pong
+            if (!alreadyHaveKey) {
+              createKeyExchangeRef.current().then((payload) => {
+                if (payload) {
+                  sendMessageRef.current(peerId, {
+                    type: "key_exchange",
+                    ...payload,
+                  });
+                }
+              });
+            }
+          }
+        });
+        return;
+      }
+
+      // Handle Encrypted Messages
+      if (
+        data &&
+        typeof data === "object" &&
+        data.type === "encrypted_message"
+      ) {
+        decryptRef
+          .current(peerId, data.payload as EncryptedPayload)
+          .then((plaintext) => {
+            if (plaintext) {
+              try {
+                const decryptedData = JSON.parse(plaintext);
+                // Recursively handle the decrypted message
+                handleMessageReceivedRef.current(peerId, {
+                  ...decryptedData,
+                  _encrypted: true,
+                });
+              } catch {
+                console.error("Failed to parse decrypted message");
+              }
+            }
+          });
         return;
       }
 
@@ -380,6 +471,7 @@ export default function App() {
       // Handle Standard Messages
       const messageId = data.id || generateId();
       const sentTimestamp = data.timestamp || Date.now();
+      const wasEncrypted = data._encrypted === true;
 
       let newMessage: Message;
       if (typeof data === "string") {
@@ -391,6 +483,7 @@ export default function App() {
           receivedAt: Date.now(),
           status: "delivered",
           type: "text",
+          encrypted: false,
         };
       } else {
         newMessage = {
@@ -402,6 +495,7 @@ export default function App() {
           status: "delivered",
           type: data.type || "text",
           file: data.file,
+          encrypted: wasEncrypted,
         };
       }
 
@@ -455,6 +549,13 @@ export default function App() {
       return prev;
     });
 
+    // Initiate E2EE key exchange
+    createKeyExchangeRef.current().then((payload) => {
+      if (payload) {
+        sendMessageRef.current(peerId, { type: "key_exchange", ...payload });
+      }
+    });
+
     if (window.innerWidth >= 768) {
       setSelectedPeerId((prev) => (prev ? prev : peerId));
     }
@@ -494,12 +595,64 @@ export default function App() {
     },
   });
 
+  // E2EE Hook
+  const {
+    isReady: isEncryptionReady,
+    myFingerprint,
+    myShortFingerprint,
+    createKeyExchange,
+    handleKeyExchange,
+    encrypt,
+    decrypt,
+    getPeerFingerprint,
+    hasPeerKey,
+    markPeerVerified,
+    exportMyKeys,
+    importMyKeys,
+    peerStates: encryptionPeerStates,
+  } = useEncryption({
+    sessionId: activeSessionId,
+    onKeyChange: (peerId, oldFp, newFp) => {
+      setKeyChangeWarning({
+        peerId,
+        oldFingerprint: oldFp,
+        newFingerprint: newFp,
+      });
+    },
+  });
+
+  // Ref for encryption functions
+  const encryptRef = useRef(encrypt);
+  const decryptRef = useRef(decrypt);
+  useEffect(() => {
+    encryptRef.current = encrypt;
+    decryptRef.current = decrypt;
+    handleKeyExchangeRef.current = handleKeyExchange;
+    createKeyExchangeRef.current = createKeyExchange;
+    hasPeerKeyRef.current = hasPeerKey;
+  }, [encrypt, decrypt, handleKeyExchange, createKeyExchange, hasPeerKey]);
+
   // Update ref when sendMessage is available
   useEffect(() => {
     sendMessageRef.current = sendMessage;
   }, [sendMessage]);
 
-  const handleSendMessage = (contentOrMsg: string | Partial<Message>) => {
+  // Update handleMessageReceived ref
+  useEffect(() => {
+    handleMessageReceivedRef.current = handleMessageReceived;
+  }, [handleMessageReceived]);
+
+  // Auto-connect from URL hash when ready
+  useEffect(() => {
+    if (isReady && pendingConnectPeerId && pendingConnectPeerId !== myId) {
+      console.log("Auto-connecting to peer from URL:", pendingConnectPeerId);
+      connectToPeer(pendingConnectPeerId);
+      setSelectedPeerId(pendingConnectPeerId);
+      setPendingConnectPeerId(null);
+    }
+  }, [isReady, pendingConnectPeerId, myId, connectToPeer]);
+
+  const handleSendMessage = async (contentOrMsg: string | Partial<Message>) => {
     if (!selectedPeerId) return;
 
     const messageId = generateId();
@@ -517,8 +670,31 @@ export default function App() {
       messageData = { ...messageData, ...contentOrMsg };
     }
 
-    // Send message with ID and timestamp for receipt tracking
-    const success = sendMessage(selectedPeerId, messageData);
+    // Check if we have E2EE with this peer
+    const canEncrypt = hasPeerKey(selectedPeerId);
+    let success = false;
+    let isEncrypted = false;
+
+    if (canEncrypt) {
+      // Encrypt the message
+      const encrypted = await encrypt(
+        selectedPeerId,
+        JSON.stringify(messageData)
+      );
+      if (encrypted) {
+        success = sendMessage(selectedPeerId, {
+          type: "encrypted_message",
+          payload: encrypted,
+        });
+        isEncrypted = true;
+      } else {
+        // Fallback to unencrypted if encryption fails
+        success = sendMessage(selectedPeerId, messageData);
+      }
+    } else {
+      // Send unencrypted (no key exchange yet)
+      success = sendMessage(selectedPeerId, messageData);
+    }
 
     if (success) {
       const newMessage: Message = {
@@ -529,6 +705,7 @@ export default function App() {
         status: "sent",
         type: messageData.type,
         file: messageData.file,
+        encrypted: isEncrypted,
       };
 
       setChats((prev) => {
@@ -1048,121 +1225,30 @@ export default function App() {
           onSendFileChunked={handleSendFileChunked}
           sendingProgress={sendingProgress}
           receivingProgress={receivingProgress}
+          peerFingerprint={
+            selectedPeerId ? getPeerFingerprint(selectedPeerId) : null
+          }
+          isEncrypted={selectedPeerId ? hasPeerKey(selectedPeerId) : false}
         />
       </div>
 
-      {/* Sync Modals */}
-      {syncStatus === "outgoing" && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="animate-spin">
-                <RefreshCw className="w-6 h-6 text-primary-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-medium text-white">
-                  {syncProgress
-                    ? syncProgress.phase
-                    : "Waiting for confirmation..."}
-                </h3>
-                {syncProgress && (
-                  <p className="text-sm text-slate-400">
-                    {syncProgress.count} messages
-                  </p>
-                )}
-              </div>
-            </div>
-            {syncProgress ? (
-              <div className="mb-4">
-                <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div className="h-full bg-primary-500 animate-pulse w-full" />
-                </div>
-              </div>
-            ) : (
-              <p className="text-slate-400 mb-4">
-                Asking peer to authorize history sync.
-              </p>
-            )}
-            <button
-              onClick={handleCancelSync}
-              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Sync Modal */}
+      <SyncModal
+        status={syncStatus}
+        targetPeerId={syncTargetPeerId}
+        peerName={syncTargetPeerId ? chats[syncTargetPeerId]?.name : undefined}
+        progress={syncProgress}
+        onCancel={handleCancelSync}
+        onAccept={handleAcceptSync}
+        onReject={handleRejectSync}
+      />
 
-      {syncStatus === "incoming" && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <h3 className="text-lg font-medium text-white mb-2">
-              Sync Request
-            </h3>
-            <p className="text-slate-400 mb-6">
-              <span className="font-mono text-primary-400">
-                {chats[syncTargetPeerId || ""]?.name ||
-                  syncTargetPeerId?.slice(0, 8)}
-              </span>
-              wants to sync chat history. This will merge messages on both
-              devices.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={handleRejectSync}
-                className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
-              >
-                Decline
-              </button>
-              <button
-                onClick={handleAcceptSync}
-                className="flex-1 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg transition-colors"
-              >
-                Allow
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* New Session Confirmation Dialog */}
-      {showNewSessionDialog && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-yellow-500/10 rounded-full">
-                <AlertTriangle className="w-6 h-6 text-yellow-400" />
-              </div>
-              <h3 className="text-lg font-medium text-white">
-                Create New Session?
-              </h3>
-            </div>
-            <p className="text-slate-400 mb-2">Creating a new session will:</p>
-            <ul className="text-sm text-slate-400 mb-4 space-y-1 ml-4">
-              <li>• Disconnect all current chats</li>
-              <li>• Generate a new ID</li>
-              <li>• Start with an empty chat list</li>
-            </ul>
-            <p className="text-sm text-slate-500 mb-6">
-              You can switch back to this session anytime.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowNewSessionDialog(false)}
-                className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmNewSession}
-                className="flex-1 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg transition-colors"
-              >
-                Create Session
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* New Session Dialog */}
+      <NewSessionDialog
+        isOpen={showNewSessionDialog}
+        onClose={() => setShowNewSessionDialog(false)}
+        onConfirm={handleConfirmNewSession}
+      />
 
       {/* Settings Modal */}
       {showSettings && (
@@ -1171,8 +1257,31 @@ export default function App() {
           onSave={handleSaveConfig}
           onClose={() => setShowSettings(false)}
           onClearData={handleClearData}
+          myFingerprint={myFingerprint}
+          onExportKeys={exportMyKeys}
+          onImportKeys={importMyKeys}
         />
       )}
+
+      {/* Key Change Warning Modal */}
+      <KeyChangeWarningModal
+        warning={keyChangeWarning}
+        peerName={
+          keyChangeWarning ? chats[keyChangeWarning.peerId]?.name : undefined
+        }
+        onDisconnect={() => {
+          if (keyChangeWarning) {
+            disconnectPeer(keyChangeWarning.peerId);
+            setKeyChangeWarning(null);
+          }
+        }}
+        onTrust={() => {
+          if (keyChangeWarning) {
+            markPeerVerified(keyChangeWarning.peerId);
+            setKeyChangeWarning(null);
+          }
+        }}
+      />
     </div>
   );
 }

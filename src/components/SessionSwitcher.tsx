@@ -222,8 +222,7 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
                 onCreateNewSession();
                 setIsOpen(false);
               }}
-              disabled={!isReady}
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-primary-400 hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-primary-400 hover:bg-slate-800 transition-colors"
             >
               <Plus className="w-4 h-4" />
               <span className="text-sm font-medium">New Session</span>

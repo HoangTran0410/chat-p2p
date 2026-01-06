@@ -15,6 +15,9 @@ export interface Message {
     mimeType: string;
     data?: Blob | ArrayBuffer | string; // Blob for local/IDB, ArrayBuffer from PeerJS
   };
+  // E2EE fields
+  encrypted?: boolean; // true if message was encrypted
+  encryptedPayload?: EncryptedPayload; // Only present in transit, not stored
 }
 
 export interface ChatSession {
@@ -34,6 +37,36 @@ export interface User {
 export interface UserSession {
   id: string; // Peer ID for this session
   name?: string; // Display name (e.g., "Work", "Personal")
+  createdAt: number;
+}
+
+// ==================== E2EE Types ====================
+
+export interface EncryptedPayload {
+  iv: string; // Base64 encoded IV (12 bytes for GCM)
+  ciphertext: string; // Base64 encoded ciphertext + auth tag
+}
+
+export interface KeyExchangeMessage {
+  type: "key_exchange";
+  identityPubKey: JsonWebKey;
+  sessionPubKey: JsonWebKey;
+  signature: string;
+}
+
+export interface PeerKeyInfo {
+  peerId: string;
+  identityPubKey: JsonWebKey;
+  fingerprint: string;
+  firstSeen: number;
+  lastSeen: number;
+  verified: boolean; // User has manually verified this peer
+}
+
+export interface StoredIdentityKeys {
+  sessionId: string; // Our session ID
+  identityPubKey: JsonWebKey;
+  identityPrivKey: JsonWebKey;
   createdAt: number;
 }
 

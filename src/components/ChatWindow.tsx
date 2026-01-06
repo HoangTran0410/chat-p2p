@@ -22,6 +22,9 @@ import {
   Calendar,
   Paperclip,
   File as FileIcon,
+  Lock,
+  LockOpen,
+  Share2,
 } from "lucide-react";
 import { Message, FILE_CHUNK_SIZE, MAX_FILE_SIZE_WARNING } from "../types";
 import { ChatSession, PeerConnectionStatus } from "../types";
@@ -66,6 +69,9 @@ interface ChatWindowProps {
     fileName: string;
     progress: number;
   } | null;
+  // E2EE
+  peerFingerprint?: string | null;
+  isEncrypted?: boolean;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -91,9 +97,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   onSendFileChunked,
   sendingProgress,
   receivingProgress,
+  peerFingerprint,
+  isEncrypted,
 }) => {
   const [inputText, setInputText] = useState("");
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(
     null
   );
@@ -323,10 +332,26 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   )}
                   {copied ? "Copied" : "Copy ID"}
                 </button>
+                <button
+                  onClick={() => {
+                    const shareUrl = `${window.location.origin}${window.location.pathname}#connect=${myId}`;
+                    navigator.clipboard.writeText(shareUrl);
+                    setLinkCopied(true);
+                    setTimeout(() => setLinkCopied(false), 2000);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary-600/20 hover:bg-primary-600/30 border border-primary-500/30 rounded-lg text-sm font-medium transition-colors text-primary-400"
+                >
+                  {linkCopied ? (
+                    <Check className="w-4 h-4 text-green-400" />
+                  ) : (
+                    <Share2 className="w-4 h-4" />
+                  )}
+                  {linkCopied ? "Link Copied!" : "Share Invite Link"}
+                </button>
                 {peerError && (
                   <button
                     onClick={onRetry}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary-600/20 hover:bg-primary-600/30 border border-primary-500/30 rounded-lg text-sm font-medium transition-colors text-primary-400"
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 rounded-lg text-sm font-medium transition-colors text-red-400"
                   >
                     <RefreshCw className="w-4 h-4" />
                     Retry
@@ -451,6 +476,27 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   )}
                   {statusConfig.text}
                 </span>
+                {/* E2EE Badge */}
+                {isConnected && (
+                  <span
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                      isEncrypted
+                        ? "bg-primary-500/10 text-primary-400"
+                        : "bg-slate-700/50 text-slate-500"
+                    }`}
+                    title={
+                      peerFingerprint ||
+                      (isEncrypted ? "E2EE Active" : "Unencrypted")
+                    }
+                  >
+                    {isEncrypted ? (
+                      <Lock className="w-2.5 h-2.5" />
+                    ) : (
+                      <LockOpen className="w-2.5 h-2.5" />
+                    )}
+                    {isEncrypted ? "E2EE" : ""}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -563,6 +609,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           isMe ? "text-primary-200" : "text-slate-500"
                         }`}
                       >
+                        {/* Encryption indicator */}
+                        {msg.encrypted ? (
+                          <Lock className="w-2.5 h-2.5 opacity-60" />
+                        ) : (
+                          <LockOpen className="w-2.5 h-2.5 opacity-40" />
+                        )}
                         {format(msg.timestamp, "h:mm a")}
                         {isMe && msg.status && (
                           <span className="ml-1">

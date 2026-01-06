@@ -41,8 +41,102 @@ bun run build
 
 1. **Signaling** - PeerJS server (`fbaio.xyz`) handles initial peer discovery
 2. **Connection** - WebRTC establishes direct browser-to-browser link
-3. **Messaging** - All data transferred directly between peers
-4. **Storage** - Chats saved locally in IndexedDB
+3. **Key Exchange** - ECDH key exchange with ECDSA signatures
+4. **Messaging** - All messages encrypted with AES-256-GCM
+5. **Storage** - Chats saved locally in IndexedDB
+
+## 🔐 End-to-End Encryption (E2EE)
+
+All messages are encrypted using modern cryptographic standards. Even if someone intercepts the WebRTC traffic, they cannot read your messages.
+
+### Cryptographic Algorithms
+
+| Purpose | Algorithm | Details |
+|---------|-----------|---------|
+| **Identity Keys** | ECDSA (P-256) | Signs session keys to prove identity |
+| **Key Exchange** | ECDH (P-256) | Derives shared secret between peers |
+| **Key Derivation** | HKDF (SHA-256) | Converts ECDH output to AES key |
+| **Message Encryption** | AES-256-GCM | Authenticated encryption with random IV |
+
+### Key Exchange Flow
+
+```
+┌─────────────┐                           ┌─────────────┐
+│   Peer A    │                           │   Peer B    │
+└──────┬──────┘                           └──────┬──────┘
+       │                                         │
+       │  1. Generate Identity Key (ECDSA)       │
+       │  2. Generate Session Key (ECDH)         │
+       │                                         │
+       │──── key_exchange ──────────────────────►│
+       │     (identity_pub, session_pub,         │
+       │      signature)                         │
+       │                                         │
+       │                           3. Verify signature
+       │                           4. Generate own Session Key
+       │                           5. Derive shared AES key
+       │                                         │
+       │◄──── key_exchange ─────────────────────│
+       │                                         │
+       │  6. Verify signature                    │
+       │  7. Derive shared AES key               │
+       │                                         │
+       │◄═══════ E2EE Active ═══════════════════►│
+       │                                         │
+```
+
+### Message Encryption
+
+```
+Plaintext Message
+        │
+        ▼
+┌───────────────────┐
+│ JSON.stringify()  │
+└─────────┬─────────┘
+          │
+          ▼
+┌───────────────────┐
+│ Generate 12-byte  │
+│   random IV       │
+└─────────┬─────────┘
+          │
+          ▼
+┌───────────────────┐
+│  AES-256-GCM      │
+│  Encrypt          │
+│  (key, iv, data)  │
+└─────────┬─────────┘
+          │
+          ▼
+┌───────────────────┐
+│ { type: "encrypted_message",
+│   payload: {
+│     iv: base64,
+│     ciphertext: base64
+│   }
+│ }
+└───────────────────┘
+```
+
+### Security Features
+
+| Feature | Description |
+|---------|-------------|
+| **Identity Verification** | Fingerprint display in Settings - compare with peer via trusted channel |
+| **Key Change Detection** | Warning shown if peer's identity key changes (potential MITM) |
+| **Forward Secrecy** | New session keys generated each app session |
+| **Key Backup** | Export/import identity keys for account recovery |
+| **Message Authentication** | GCM mode provides integrity + authenticity |
+
+### File Locations
+
+| File | Purpose |
+|------|---------|
+| `src/services/crypto.ts` | All cryptographic operations |
+| `src/hooks/useEncryption.ts` | React hook for E2EE state management |
+| `src/services/db.ts` | IndexedDB storage for identity & peer keys |
+| `src/components/SecurityBadge.tsx` | UI components for encryption status |
 
 ## ⚠️ Limitations
 

@@ -1,5 +1,15 @@
-import React, { useState } from "react";
-import { X, Save, RotateCcw, Server } from "lucide-react";
+import React, { useState, useRef } from "react";
+import {
+  X,
+  Save,
+  RotateCcw,
+  Server,
+  Shield,
+  Download,
+  Upload,
+  Copy,
+  Check,
+} from "lucide-react";
 import { PeerConfig } from "../types";
 import { DEFAULT_PEER_CONFIG } from "../constants";
 
@@ -8,6 +18,10 @@ interface SettingsModalProps {
   onSave: (config: PeerConfig) => void;
   onClose: () => void;
   onClearData: () => void;
+  // E2EE props
+  myFingerprint?: string | null;
+  onExportKeys?: () => Promise<string | null>;
+  onImportKeys?: (json: string) => Promise<boolean>;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -15,8 +29,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSave,
   onClose,
   onClearData,
+  myFingerprint,
+  onExportKeys,
+  onImportKeys,
 }) => {
   const [formData, setFormData] = useState<PeerConfig>(config);
+  const [copied, setCopied] = useState(false);
+  const [importStatus, setImportStatus] = useState<
+    "idle" | "success" | "error"
+  >("idle");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -166,6 +188,108 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
         </form>
+
+        {/* Security Section */}
+        {myFingerprint && (
+          <div className="px-6 py-4 bg-primary-500/5 border-t border-primary-500/20">
+            <h3 className="text-xs font-bold text-primary-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <Shield className="w-3.5 h-3.5" />
+              End-to-End Encryption
+            </h3>
+
+            {/* Fingerprint */}
+            <div className="mb-4">
+              <label className="block text-xs text-slate-400 mb-1">
+                Your Identity Fingerprint
+              </label>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 bg-slate-950 px-3 py-2 rounded text-xs font-mono text-slate-300 overflow-hidden text-ellipsis">
+                  {myFingerprint.split(" ").slice(0, 8).join(" ")}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(myFingerprint);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="p-2 bg-slate-800 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors"
+                  title="Copy full fingerprint"
+                >
+                  {copied ? (
+                    <Check className="w-4 h-4 text-green-400" />
+                  ) : (
+                    <Copy className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Export/Import Keys */}
+            <div className="flex gap-2">
+              {onExportKeys && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const json = await onExportKeys();
+                    if (json) {
+                      const blob = new Blob([json], {
+                        type: "application/json",
+                      });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = "ping-identity-keys.json";
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export Keys
+                </button>
+              )}
+              {onImportKeys && (
+                <>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept=".json"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const text = await file.text();
+                        const success = await onImportKeys(text);
+                        setImportStatus(success ? "success" : "error");
+                        setTimeout(() => setImportStatus("idle"), 2000);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded transition-colors ${
+                      importStatus === "success"
+                        ? "bg-green-500/20 text-green-400"
+                        : importStatus === "error"
+                        ? "bg-red-500/20 text-red-400"
+                        : "bg-slate-800 hover:bg-slate-700 text-slate-300"
+                    }`}
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    {importStatus === "success"
+                      ? "Imported!"
+                      : importStatus === "error"
+                      ? "Failed"
+                      : "Import Keys"}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Danger Zone */}
         <div className="px-6 py-4 bg-red-500/5 border-t border-red-500/20">
