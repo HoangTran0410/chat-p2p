@@ -7,3 +7,5 @@ export const DEFAULT_PEER_CONFIG: PeerConfig = {
   secure: true,
   debug: 3,
 };
+
+export const MAX_CONNECTIONS = 50;

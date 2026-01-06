@@ -2,9 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Peer, DataConnection } from "peerjs";
 import { generateId, getStoredUserId, storeUserId } from "../services/storage";
 import { PeerConnectionStatus, PeerConfig } from "../types";
-import { DEFAULT_PEER_CONFIG } from "../constants";
-
-const MAX_CONNECTIONS = 50;
+import { DEFAULT_PEER_CONFIG, MAX_CONNECTIONS } from "../constants";
 
 interface UseP2PProps {
   config?: PeerConfig;
@@ -35,6 +33,7 @@ export const useP2P = ({
   >({});
 
   const [isReady, setIsReady] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false); // New state for reconnect spinner
   const [peerError, setPeerError] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null); // Transient errors
 
@@ -117,6 +116,7 @@ export const useP2P = ({
 
   const initPeer = useCallback(
     (id: string) => {
+      setIsReconnecting(true); // Start connecting/reconnecting
       // @ts-ignore
       const PeerClass = (window.Peer as any) || Peer;
 
@@ -131,6 +131,7 @@ export const useP2P = ({
       newPeer.on("open", (id: string) => {
         console.log("My Peer ID is: " + id);
         setIsReady(true);
+        setIsReconnecting(false); // Connected
         setPeerError(null);
       });
 
@@ -138,13 +139,36 @@ export const useP2P = ({
         handleConnection(conn);
       });
 
+      newPeer.on("disconnected", () => {
+        console.log("Peer disconnected from server.");
+        setIsReady(false);
+        // setPeerError("Disconnected. Reconnecting...");
+
+        // Auto-reconnect attempt
+        setTimeout(() => {
+          if (newPeer && !newPeer.destroyed) {
+            console.log("Attempting to reconnect...");
+            setIsReconnecting(true); // Mark as reconnecting during attempt
+            newPeer.reconnect();
+          }
+        }, 3000);
+      });
+
       newPeer.on("error", (err: any) => {
         console.error("PeerJS error:", err);
+        setIsReconnecting(false); // Stop spinning on error
 
         // Handle ID taken (fatal for this session)
         if (err.type === "unavailable-id") {
           setPeerError("ID is already taken. Please choose another.");
           setIsReady(false);
+          // Do NOT auto-reconnect for fatal ID errors
+        }
+        // Handle generic errors that might be ID conflicts (PeerJS sometimes behaves inconsistently)
+        else if (err.message && err.message.includes("is taken")) {
+          setPeerError(`ID is taken: ${err.message}`);
+          setIsReady(false);
+          // Do NOT auto-reconnect for fatal ID errors
         }
         // Handle peer not found (transient for specific connection)
         else if (err.type === "peer-unavailable") {
@@ -160,6 +184,18 @@ export const useP2P = ({
           } else {
             setConnectionError("Peer not found or offline.");
           }
+        }
+        // Handle lost connection to server
+        else if (err.type === "network" || err.type === "disconnected") {
+          setIsReady(false);
+          setPeerError("Network error. Reconnecting...");
+          // Retry happens via disconnected event usually, but if not:
+          setTimeout(() => {
+            if (newPeer && !newPeer.destroyed) {
+              setIsReconnecting(true);
+              newPeer.reconnect();
+            }
+          }, 3000);
         } else {
           setPeerError("Connection error: " + (err.message || "Unknown error"));
         }
@@ -179,7 +215,6 @@ export const useP2P = ({
       storeUserId(existingId);
     }
     setMyId(existingId);
-    setMyId(existingId);
     // Initialize with current config
     const newPeer = initPeer(existingId);
 
@@ -193,7 +228,6 @@ export const useP2P = ({
       window.removeEventListener("beforeunload", handleUnload);
       newPeer?.destroy();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]); // Re-init on config change
 
@@ -278,6 +312,7 @@ export const useP2P = ({
   return {
     myId,
     isReady,
+    isReconnecting,
     peerError,
     connectionError,
     resetConnectionError,

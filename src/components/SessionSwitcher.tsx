@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   Copy,
   Circle,
+  RefreshCw,
 } from "lucide-react";
 import { UserSession } from "../types";
 
@@ -19,6 +20,8 @@ interface SessionSwitcherProps {
   onDeleteSession: (sessionId: string) => void;
   isReady: boolean;
   peerError?: string | null;
+  onRetry?: () => void;
+  isReconnecting?: boolean;
 }
 
 export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
@@ -29,6 +32,8 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
   onDeleteSession,
   isReady,
   peerError,
+  onRetry,
+  isReconnecting,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
@@ -100,7 +105,7 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
               <span className="text-[10px] text-slate-500 uppercase tracking-wider">
                 Your ID
               </span>
-              <span className="text-sm text-slate-200 font-mono truncate max-w-[120px]">
+              <span className="text-sm text-slate-200 font-mono truncate max-w-[140px]">
                 {activeSession?.name || activeSessionId}
               </span>
             </div>
@@ -124,6 +129,25 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
             <Copy className="w-4 h-4" />
           )}
         </button>
+
+        {/* Reconnect Button (only when error/offline) */}
+        {!isReady && onRetry && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRetry();
+            }}
+            className="p-2.5 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-lg text-slate-400 transition-colors group"
+            title="Retry Connection"
+            disabled={isReconnecting}
+          >
+            <RefreshCw
+              className={`w-4 h-4 ${
+                isReconnecting ? "animate-spin" : "group-hover:animate-spin"
+              }`}
+            />
+          </button>
+        )}
       </div>
 
       {/* Dropdown */}

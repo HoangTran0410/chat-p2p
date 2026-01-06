@@ -21,9 +21,7 @@ import {
   CheckCheck,
   Calendar,
   Paperclip,
-  Image as ImageIcon,
   File as FileIcon,
-  Video,
 } from "lucide-react";
 import { Message, FILE_CHUNK_SIZE, MAX_FILE_SIZE_WARNING } from "../types";
 import { ChatSession, PeerConnectionStatus } from "../types";
@@ -308,7 +306,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             <div className="relative z-10">
               <h3 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
                 <Shield className="w-5 h-5 text-primary-400" />
-                Your Digital Identity
+                Your Ping ID
               </h3>
               <code className="block text-2xl md:text-3xl font-mono text-white tracking-tight break-all mb-4">
                 {myId || "Generating ID..."}

@@ -2,12 +2,8 @@ import React, { useState } from "react";
 import {
   MessageSquare,
   Plus,
-  Copy,
-  Check,
-  Circle,
   Pencil,
   LayoutDashboard,
-  RefreshCw,
   Settings,
 } from "lucide-react";
 import { ChatSession, UserSession } from "../types";
@@ -33,6 +29,7 @@ interface ChatSidebarProps {
   onSwitchSession: (sessionId: string) => void;
   onCreateNewSession: () => void;
   onDeleteSession: (sessionId: string) => void;
+  isReconnecting?: boolean;
 }
 
 export const ChatSidebar: React.FC<ChatSidebarProps> = ({
@@ -53,6 +50,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onSwitchSession,
   onCreateNewSession,
   onDeleteSession,
+  isReconnecting,
 }) => {
   const [newPeerId, setNewPeerId] = useState("");
   const [copied, setCopied] = useState(false);
@@ -136,6 +134,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           onDeleteSession={onDeleteSession}
           isReady={isReady}
           peerError={peerError}
+          onRetry={onRetry}
+          isReconnecting={isReconnecting}
         />
         {peerError && (
           <div className="mt-2 text-xs text-red-400 font-medium px-1">
@@ -163,7 +163,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
               type="text"
               value={newPeerId}
               onChange={(e) => setNewPeerId(e.target.value)}
-              placeholder="Paste Peer ID..."
+              placeholder="Enter Peer ID..."
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500 transition-colors"
               autoFocus
             />

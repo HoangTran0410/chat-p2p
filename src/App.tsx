@@ -28,7 +28,7 @@ import {
   UserSession,
 } from "./types";
 import { X, RefreshCw, AlertTriangle } from "lucide-react";
-import { DEFAULT_PEER_CONFIG } from "./constants";
+import { DEFAULT_PEER_CONFIG, MAX_CONNECTIONS } from "./constants";
 
 export default function App() {
   const [chats, setChats] = useState<Record<string, ChatSession>>({});
@@ -475,6 +475,7 @@ export default function App() {
     resetConnectionError,
     isReady,
     connectionStates,
+    isReconnecting,
   } = useP2P({
     config: peerConfig,
     onMessageReceived: handleMessageReceived,
@@ -483,7 +484,9 @@ export default function App() {
     onConnectionLimitExceeded: (disconnectedPeerId) => {
       const name =
         chats[disconnectedPeerId]?.name || disconnectedPeerId.slice(0, 8);
-      setLimitWarning(`Disconnected "${name}" - max 5 connections reached`);
+      setLimitWarning(
+        `Disconnected "${name}" - max ${MAX_CONNECTIONS} connections reached`
+      );
       setTimeout(() => setLimitWarning(null), 4000);
     },
   });
@@ -992,6 +995,7 @@ export default function App() {
           onSwitchSession={handleSwitchSession}
           onCreateNewSession={handleCreateNewSession}
           onDeleteSession={handleDeleteSession}
+          isReconnecting={isReconnecting}
         />
       </div>
 
