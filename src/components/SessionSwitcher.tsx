@@ -10,31 +10,32 @@ import {
   Circle,
   RefreshCw,
 } from "lucide-react";
+import { useAppStore, useP2PStore } from "../stores";
+import { NewSessionDialog } from "./NewSessionDialog";
+import {
+  generateId,
+  storeSession,
+  setActiveSessionId as setActiveSessionIdStorage,
+} from "../services/storage";
 import { UserSession } from "../types";
 
-interface SessionSwitcherProps {
-  sessions: UserSession[];
-  activeSessionId: string;
-  onSwitchSession: (sessionId: string) => void;
-  onCreateNewSession: () => void;
-  onDeleteSession: (sessionId: string) => void;
-  isReady: boolean;
-  peerError?: string | null;
-  onRetry?: () => void;
-  isReconnecting?: boolean;
-}
+export const SessionSwitcher: React.FC = () => {
+  // Get state and actions from stores
+  const {
+    setChats,
+    setSelectedPeerId,
+    sessions,
+    activeSessionId,
+    switchSession,
+    setSessions,
+    createNewSession,
+    setActiveSessionId: setActiveSessionIdState,
+    deleteSession,
+    showNewSessionDialog,
+    setShowNewSessionDialog,
+  } = useAppStore();
+  const { isReady, peerError, isReconnecting, myId, updateId } = useP2PStore();
 
-export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
-  sessions,
-  activeSessionId,
-  onSwitchSession,
-  onCreateNewSession,
-  onDeleteSession,
-  isReady,
-  peerError,
-  onRetry,
-  isReconnecting,
-}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
     null
@@ -43,6 +44,10 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
+
+  const handleRetry = () => {
+    if (myId) updateId(myId);
+  };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -63,7 +68,7 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
   const handleDeleteClick = (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
     if (showDeleteConfirm === sessionId) {
-      onDeleteSession(sessionId);
+      deleteSession(sessionId);
       setShowDeleteConfirm(null);
     } else {
       setShowDeleteConfirm(sessionId);
@@ -75,6 +80,32 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
     navigator.clipboard.writeText(activeSessionId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleConfirmNewSession = async () => {
+    const newId = generateId();
+    const newSession: UserSession = {
+      id: newId,
+      createdAt: Date.now(),
+    };
+
+    // Store new session
+    storeSession(newSession);
+
+    // Update state
+    const updatedSessions = [...sessions, newSession];
+    setSessions(updatedSessions);
+
+    // Switch to new session
+    setActiveSessionIdStorage(newId);
+    setActiveSessionIdState(newId);
+
+    // Clear chats (new session has no chats)
+    setChats({});
+    setSelectedPeerId(null);
+
+    // Close dialog
+    setShowNewSessionDialog(false);
   };
 
   return (
@@ -131,11 +162,11 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
         </button>
 
         {/* Reconnect Button (only when error/offline) */}
-        {!isReady && onRetry && (
+        {!isReady && (
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onRetry();
+              handleRetry();
             }}
             className="p-2.5 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-lg text-slate-400 transition-colors group"
             title="Retry Connection"
@@ -168,7 +199,7 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
                   }`}
                   onClick={() => {
                     if (!isDeleting) {
-                      onSwitchSession(session.id);
+                      switchSession(session.id);
                       setIsOpen(false);
                     }
                   }}
@@ -219,7 +250,7 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
           <div className="border-t border-slate-700">
             <button
               onClick={() => {
-                onCreateNewSession();
+                setShowNewSessionDialog(true);
                 setIsOpen(false);
               }}
               className="w-full flex items-center gap-2 px-3 py-2.5 text-primary-400 hover:bg-slate-800 transition-colors"
@@ -230,6 +261,13 @@ export const SessionSwitcher: React.FC<SessionSwitcherProps> = ({
           </div>
         </div>
       )}
+
+      {/* New Session Dialog */}
+      <NewSessionDialog
+        isOpen={showNewSessionDialog}
+        onClose={() => setShowNewSessionDialog(false)}
+        onConfirm={handleConfirmNewSession}
+      />
     </div>
   );
 };

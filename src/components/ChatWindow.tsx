@@ -30,32 +30,10 @@ import { Message, FILE_CHUNK_SIZE, MAX_FILE_SIZE_WARNING } from "../types";
 import { ChatSession, PeerConnectionStatus } from "../types";
 import { format } from "date-fns";
 import { generateId } from "../services/storage";
-import { useAppStore } from "../stores";
+import { useAppStore, useP2PStore } from "../stores";
 
 interface ChatWindowProps {
-  myId: string;
-  peerId: string;
-  session?: ChatSession;
-  connectionState: PeerConnectionStatus;
   onSendMessage: (content: string | Partial<Message>) => void;
-  onDeleteChat: () => void;
-  onConnect: () => void;
-  onCancelConnection: () => void;
-
-  // Dashboard stats
-  isReady: boolean;
-  activeConnectionsCount: number;
-  totalChats: number;
-  totalRooms: number;
-
-  // Typing
-  isPeerTyping?: boolean;
-  sendMessage?: (peerId: string, data: any) => boolean;
-
-  // Identity actions
-  peerError: string | null;
-  onRetry: () => void;
-  onRenameChat: (newName: string) => void;
   onResendMessage: (messageId: string) => void;
   onRequestSync: () => void;
   // Chunked file transfer
@@ -76,22 +54,7 @@ interface ChatWindowProps {
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
-  myId,
-  peerId,
-  session,
-  connectionState,
   onSendMessage,
-  onDeleteChat,
-  onConnect,
-  onCancelConnection,
-  isReady,
-  activeConnectionsCount,
-  totalChats,
-  isPeerTyping = false,
-  sendMessage,
-  peerError,
-  onRetry,
-  onRenameChat,
   onResendMessage,
   onRequestSync,
   onSendFileChunked,
@@ -99,13 +62,60 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   receivingProgress,
   peerFingerprint,
   isEncrypted,
-  totalRooms,
 }) => {
-  const { backToSidebar } = useAppStore();
+  // Get state and actions from stores
+  const {
+    backToSidebar,
+    chats,
+    typingStates,
+    selectedPeerId,
+    renameChat,
+    deleteChat,
+  } = useAppStore();
+  const {
+    myId,
+    isReady,
+    peerError,
+    activeConnectionsCount,
+    sendMessage,
+    connectionStates,
+    updateId,
+    connectToPeer,
+    disconnectPeer,
+  } = useP2PStore();
+
+  // Use selectedPeerId as peerId
+  const peerId = selectedPeerId || "";
+
+  // Derive values from stores
+  const session = peerId ? chats[peerId] : undefined;
+  const totalChats = Object.keys(chats).length;
+  const isPeerTyping = peerId ? typingStates[peerId] ?? false : false;
+  const connectionState: PeerConnectionStatus = peerId
+    ? connectionStates[peerId] || "disconnected"
+    : "disconnected";
+
+  const handleRetry = () => {
+    if (myId) updateId(myId);
+  };
+
+  const handleConnect = () => {
+    if (peerId) connectToPeer(peerId);
+  };
+
+  const handleCancelConnection = () => {
+    if (peerId) disconnectPeer(peerId);
+  };
+
+  const handleDeleteChat = () => {
+    if (peerId) deleteChat(peerId, disconnectPeer);
+  };
+
+  const handleRenameChat = (newName: string) => {
+    if (peerId) renameChat(peerId, newName);
+  };
 
   const [inputText, setInputText] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [linkCopied, setLinkCopied] = useState(false);
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(
     null
   );
@@ -179,12 +189,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       e.preventDefault();
       handleSubmit(e as any);
     }
-  };
-
-  const handleCopyId = () => {
-    navigator.clipboard.writeText(myId);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -286,14 +290,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               </h1>
               <p className="text-slate-400 text-sm max-w-md">
                 {isReady
-                  ? "Your P2P connection is active. Select a chat or room to start messaging."
+                  ? "Your P2P connection is active. Select a chat to start messaging."
                   : "Establishing secure connection to the network..."}
               </p>
               {peerError && (
                 <div className="mt-3 flex items-center justify-center gap-2">
                   <span className="text-sm text-red-400">{peerError}</span>
                   <button
-                    onClick={onRetry}
+                    onClick={handleRetry}
                     className="text-sm text-primary-400 hover:text-primary-300 underline"
                   >
                     Retry
@@ -318,14 +322,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 </div>
                 <div className="text-xs text-slate-500 uppercase tracking-wider mt-1">
                   Chats
-                </div>
-              </div>
-              <div className="px-6 py-4 bg-slate-900/50 border border-slate-800 rounded-xl">
-                <div className="text-2xl font-bold text-white">
-                  {totalRooms}
-                </div>
-                <div className="text-xs text-slate-500 uppercase tracking-wider mt-1">
-                  Rooms
                 </div>
               </div>
             </div>
@@ -465,7 +461,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           <div className="flex items-center gap-2 pl-2">
             {connectionState === "connecting" && (
               <button
-                onClick={onCancelConnection}
+                onClick={handleCancelConnection}
                 className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
               >
                 <XCircle className="w-3.5 h-3.5" />
@@ -476,7 +472,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             {(connectionState === "failed" ||
               connectionState === "disconnected") && (
               <button
-                onClick={onConnect}
+                onClick={handleConnect}
                 className="px-3 py-1.5 bg-primary-600/20 hover:bg-primary-600/30 text-primary-400 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
@@ -520,7 +516,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   <AlertCircle className="w-8 h-8 text-red-500 opacity-50" />
                   <p className="text-red-400/80">Could not connect to peer.</p>
                   <button
-                    onClick={onConnect}
+                    onClick={handleConnect}
                     className="text-primary-500 hover:underline"
                   >
                     Try Again
@@ -754,7 +750,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     />
                     <button
                       onClick={() => {
-                        onRenameChat(tempName);
+                        handleRenameChat(tempName);
                         setIsEditingName(false);
                       }}
                       className="p-1 bg-primary-600 hover:bg-primary-500 text-white rounded"
@@ -852,7 +848,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             )}
             {!isConnected && (
               <button
-                onClick={onConnect}
+                onClick={handleConnect}
                 className="w-full py-2.5 px-4 bg-primary-600 hover:bg-primary-500 text-white rounded-lg flex items-center justify-center gap-2 transition-colors text-sm font-medium"
               >
                 <RefreshCw className="w-4 h-4" />
@@ -860,7 +856,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               </button>
             )}
             <button
-              onClick={onDeleteChat}
+              onClick={handleDeleteChat}
               className="w-full py-2.5 px-4 bg-red-950/50 hover:bg-red-950 text-red-400 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm font-medium"
             >
               <Trash2 className="w-4 h-4" />
