@@ -9,11 +9,10 @@ import {
   Share2,
   X,
   LogOut,
-  UserMinus,
 } from "lucide-react";
-import { RoomSession, RoomMember } from "../groupTypes";
-import { Message } from "../types";
+import { RoomSession } from "../groupTypes";
 import { format } from "date-fns";
+import { createInviteRoomLink } from "../utils";
 
 interface RoomChatWindowProps {
   myId: string;
@@ -61,7 +60,7 @@ export const RoomChatWindow: React.FC<RoomChatWindowProps> = ({
   };
 
   const handleCopyLink = () => {
-    const link = `${window.location.origin}${window.location.pathname}#room=${room.roomId}`;
+    const link = createInviteRoomLink(room.roomId);
     navigator.clipboard.writeText(link);
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { X, Users, Copy, Check } from "lucide-react";
+import { createInviteRoomLink } from "../utils";
 
 interface CreateRoomModalProps {
   isOpen: boolean;
@@ -29,7 +30,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
   };
 
   const handleCopyLink = () => {
-    const link = `${window.location.origin}${window.location.pathname}#room=${createdRoomId}`;
+    const link = createInviteRoomLink(createdRoomId);
     navigator.clipboard.writeText(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -101,7 +102,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
 
               <div className="bg-slate-800 rounded-lg p-3 flex items-center gap-2">
                 <code className="flex-1 text-sm text-slate-300 font-mono truncate">
-                  {`${window.location.origin}${window.location.pathname}#room=${createdRoomId}`}
+                  {createInviteRoomLink(createdRoomId)}
                 </code>
                 <button
                   onClick={handleCopyLink}

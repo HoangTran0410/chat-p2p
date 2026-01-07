@@ -17,6 +17,7 @@ import { RoomSession } from "../groupTypes";
 import { formatDistanceToNow } from "date-fns";
 import { SessionSwitcher } from "./SessionSwitcher";
 import { useAppStore } from "../stores";
+import { createInviteLink } from "../utils";
 
 interface ChatSidebarProps {
   myId: string;
@@ -77,7 +78,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [linkCopied, setLinkCopied] = useState(false);
 
   const handleCopyInviteLink = () => {
-    const url = `${window.location.origin}/#connect=${myId}`;
+    const url = createInviteLink(myId);
     navigator.clipboard.writeText(url);
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);

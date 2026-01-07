@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { parseUrlHash } from "../utils";
 
 interface AppState {
   // View state
@@ -34,31 +35,6 @@ interface AppState {
   selectRoom: (roomId: string) => void;
   backToSidebar: () => void;
 }
-
-// Parse URL hash for initial state
-const parseUrlHash = () => {
-  const hash = window.location.hash;
-  let pendingConnect: string | null = null;
-  let pendingRoom: string | null = null;
-
-  if (hash.startsWith("#connect=")) {
-    pendingConnect = hash.slice(9);
-    window.history.replaceState(
-      null,
-      "",
-      window.location.pathname + window.location.search
-    );
-  } else if (hash.startsWith("#room=")) {
-    pendingRoom = hash.slice(6);
-    window.history.replaceState(
-      null,
-      "",
-      window.location.pathname + window.location.search
-    );
-  }
-
-  return { pendingConnect, pendingRoom };
-};
 
 const { pendingConnect, pendingRoom } = parseUrlHash();
 
