@@ -6,7 +6,6 @@ import {
   Shield,
   Globe,
   Users,
-  Copy,
   Check,
   Activity,
   RefreshCw,
@@ -24,13 +23,18 @@ import {
   File as FileIcon,
   Lock,
   LockOpen,
-  Share2,
+  Columns,
 } from "lucide-react";
 import { Message, FILE_CHUNK_SIZE, MAX_FILE_SIZE_WARNING } from "../types";
-import { ChatSession, PeerConnectionStatus } from "../types";
+import { PeerConnectionStatus } from "../types";
 import { format } from "date-fns";
 import { generateId } from "../services/storage";
 import { useAppStore, useP2PStore } from "../stores";
+import { useGameStore } from "../stores/gameStore";
+import { GameSelector } from "./GameSelector";
+import { GameContainer } from "./GameContainer";
+import { Gamepad2 } from "lucide-react";
+import { gameRegistry } from "../games";
 
 interface ChatWindowProps {
   onSendMessage: (content: string | Partial<Message>) => void;
@@ -129,13 +133,51 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [showFileSizeWarning, setShowFileSizeWarning] = useState(false);
 
+  // Game state
+  const [showGameSelector, setShowGameSelector] = useState(false);
+  const {
+    createGame,
+    pendingInvites,
+    acceptInvite,
+    declineInvite,
+    activeGame,
+  } = useGameStore();
+
+  // PC Layout State
+  const [layout, setLayout] = useState<"vertical" | "horizontal">("horizontal");
+
   // Typing timeout refs
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
 
+  // Mobile Tabs
+  const [mobileTab, setMobileTab] = useState<"chat" | "game">("chat");
+  const [lastReadTime, setLastReadTime] = useState(Date.now());
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+
+  // Update last read time when entering chat tab
+  useEffect(() => {
+    if (mobileTab === "chat") {
+      setLastReadTime(Date.now());
+      scrollToBottom();
+    }
+  }, [mobileTab, session?.messages.length]);
+
+  const unreadCount =
+    session?.messages.filter(
+      (m) => m.timestamp > lastReadTime && m.senderId !== myId
+    ).length || 0;
+
+  // Auto-switch to game tab if game starts (and we are on mobile)
+  useEffect(() => {
+    const { activeGame } = useGameStore.getState();
+    if (activeGame?.status === "playing" && window.innerWidth < 768) {
+      setMobileTab("game");
+    }
+  }, [useGameStore.getState().activeGame?.status]);
 
   useEffect(() => {
     scrollToBottom();
@@ -480,6 +522,27 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               </button>
             )}
 
+            {/* Layout Toggle (Desktop Only) */}
+            {activeGame && (
+              <button
+                onClick={() =>
+                  setLayout(layout === "vertical" ? "horizontal" : "vertical")
+                }
+                className="hidden md:block p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                title={
+                  layout === "vertical"
+                    ? "Switch to Split View"
+                    : "Switch to Stacked View"
+                }
+              >
+                {layout === "vertical" ? (
+                  <Columns className="w-5 h-5 rotate-90" />
+                ) : (
+                  <Columns className="w-5 h-5" />
+                )}
+              </button>
+            )}
+
             <button
               onClick={() => setShowInfoPanel(!showInfoPanel)}
               className={`p-2 rounded-lg transition-colors ${
@@ -502,210 +565,399 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
         </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {!session || session.messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-600 text-sm p-4 text-center">
-              {connectionState === "connecting" ? (
-                <div className="flex flex-col items-center gap-3 animate-pulse">
-                  <Activity className="w-8 h-8 text-primary-500 opacity-50" />
-                  <p>Establishing secure connection...</p>
-                </div>
-              ) : connectionState === "failed" ? (
-                <div className="flex flex-col items-center gap-3">
-                  <AlertCircle className="w-8 h-8 text-red-500 opacity-50" />
-                  <p className="text-red-400/80">Could not connect to peer.</p>
-                  <button
-                    onClick={handleConnect}
-                    className="text-primary-500 hover:underline"
-                  >
-                    Try Again
-                  </button>
-                </div>
-              ) : (
-                <p>No messages yet. Say hello!</p>
-              )}
-            </div>
-          ) : (
-            session.messages.map((msg, index) => {
-              const isMe = msg.senderId === myId;
-              const showTimestamp =
-                index === 0 ||
-                msg.timestamp - session.messages[index - 1].timestamp > 300000; // 5 mins
-
-              return (
-                <div key={msg.id} className="space-y-2">
-                  {showTimestamp && (
-                    <div className="flex justify-center my-4">
-                      <span className="text-[10px] text-slate-600 bg-slate-900/50 px-2 py-0.5 rounded-full border border-slate-800">
-                        {format(msg.timestamp, "MMM d, h:mm a")}
-                      </span>
-                    </div>
-                  )}
-                  <div
-                    className={`flex flex-col ${
-                      isMe ? "items-end" : "items-start"
-                    }`}
-                  >
-                    <div
-                      onClick={() =>
-                        setExpandedMessageId(
-                          expandedMessageId === msg.id ? null : msg.id
-                        )
-                      }
-                      className={`max-w-[85%] sm:max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm break-words cursor-pointer transition-all hover:opacity-90 ${
-                        isMe
-                          ? "bg-primary-600 text-white rounded-br-sm"
-                          : "bg-slate-800 text-slate-200 border border-slate-700 rounded-bl-sm"
-                      }`}
-                    >
-                      <MessageContent message={msg} />
-                      <div
-                        className={`text-[10px] mt-1 flex items-center gap-1 ${
-                          isMe ? "text-primary-200" : "text-slate-500"
-                        }`}
-                      >
-                        {/* Encryption indicator */}
-                        {msg.encrypted ? (
-                          <Lock className="w-2.5 h-2.5 opacity-60" />
-                        ) : (
-                          <LockOpen className="w-2.5 h-2.5 opacity-40" />
-                        )}
-                        {format(msg.timestamp, "h:mm a")}
-                        {isMe && msg.status && (
-                          <span className="ml-1">
-                            {msg.status === "read" && (
-                              <CheckCheck className="w-3 h-3" />
-                            )}
-                            {msg.status === "delivered" && (
-                              <Check className="w-3 h-3" />
-                            )}
-                            {msg.status === "sent" && (
-                              <Check className="w-3 h-3 opacity-50" />
-                            )}
-                            {msg.status === "failed" && (
-                              <AlertCircle className="w-3 h-3 text-red-200" />
-                            )}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    {/* Failed message action */}
-                    {isMe && msg.status === "failed" && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onResendMessage(msg.id);
-                        }}
-                        className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 mt-1 px-1 transition-colors"
-                      >
-                        <RefreshCw className="w-3 h-3" />
-                        Tap to retry
-                      </button>
-                    )}
-                    {/* Expanded Details */}
-                    {expandedMessageId === msg.id && (
-                      <div
-                        className={`mt-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-xs space-y-1 max-w-[85%] ${
-                          isMe ? "mr-0" : "ml-0"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 text-slate-400">
-                          <Clock className="w-3 h-3" />
-                          <span>
-                            Sent:{" "}
-                            {format(msg.timestamp, "MMM d, yyyy h:mm:ss a")}
-                          </span>
-                        </div>
-                        {msg.receivedAt && (
-                          <div className="flex items-center gap-2 text-slate-400">
-                            <Check className="w-3 h-3" />
-                            <span>
-                              Delivered: {format(msg.receivedAt, "h:mm:ss a")}
-                            </span>
-                          </div>
-                        )}
-                        {msg.readAt && (
-                          <div className="flex items-center gap-2 text-slate-400">
-                            <CheckCheck className="w-3 h-3" />
-                            <span>Read: {format(msg.readAt, "h:mm:ss a")}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })
-          )}
-
-          {/* Typing Indicator */}
-          {isPeerTyping && (
-            <div className="flex justify-start animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="bg-slate-800 border border-slate-700 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1 w-fit">
-                <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></div>
-              </div>
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
+        {/* Mobile Tabs */}
+        <div className="md:hidden flex border-b border-slate-800 bg-slate-900/50">
+          <button
+            onClick={() => setMobileTab("chat")}
+            className={`flex-1 py-3 text-sm font-medium relative ${
+              mobileTab === "chat" ? "text-primary-400" : "text-slate-400"
+            }`}
+          >
+            Chat
+            {unreadCount > 0 && (
+              <span className="ml-2 px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded-full">
+                {unreadCount}
+              </span>
+            )}
+            {mobileTab === "chat" && (
+              <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500" />
+            )}
+          </button>
+          <button
+            onClick={() => setMobileTab("game")}
+            className={`flex-1 py-3 text-sm font-medium relative ${
+              mobileTab === "game" ? "text-primary-400" : "text-slate-400"
+            }`}
+          >
+            Game
+            {mobileTab === "game" && (
+              <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500" />
+            )}
+          </button>
         </div>
 
-        {/* Input */}
-        <div className="p-3 sm:p-4 border-t border-slate-800 bg-slate-950 safe-area-bottom">
-          <form
-            onSubmit={handleSubmit}
-            className={`relative flex items-end gap-2 p-2 rounded-xl border ${
-              isConnected
-                ? "border-slate-700 bg-slate-900 focus-within:border-primary-500/50 focus-within:ring-1 focus-within:ring-primary-500/50"
-                : "border-slate-800 bg-slate-900/50 opacity-75"
-            } transition-all`}
-          >
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            <button
-              type="button"
-              onClick={triggerFileSelect}
-              disabled={!isConnected}
-              className={`p-2.5 rounded-lg mb-0.5 transition-all text-slate-400 hover:text-white hover:bg-slate-800 ${
-                !isConnected ? "cursor-not-allowed opacity-50" : ""
-              }`}
-              title="Attach File"
+        {/* Pending Game Invites */}
+        {pendingInvites.map((invite) => {
+          if (invite.hostId !== peerId) return null;
+          const gameDef = gameRegistry.getDefinition(invite.gameType);
+          if (!gameDef) return null;
+
+          return (
+            <div
+              key={invite.sessionId}
+              className="mx-4 mt-4 p-3 bg-slate-800/80 border border-slate-700 rounded-lg flex items-center justify-between animate-in fade-in slide-in-from-top-2"
             >
-              <Paperclip className="w-5 h-5" />
-            </button>
-            <textarea
-              value={inputText}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              disabled={!isConnected}
-              placeholder={
-                isConnected
-                  ? "Type a message..."
-                  : `Status: ${statusConfig.text}`
+              <div className="flex items-center gap-3">
+                <div className="text-2xl">{gameDef.icon}</div>
+                <div>
+                  <div className="font-medium text-slate-200">
+                    Game Invite: {gameDef.name}
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    Invited you to play
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => declineInvite(invite.sessionId)}
+                  className="px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-700 rounded-md transition-colors"
+                >
+                  Decline
+                </button>
+                <button
+                  onClick={() => acceptInvite(invite.sessionId)}
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-500 rounded-md transition-colors shadow-lg shadow-primary-900/20"
+                >
+                  Accept
+                </button>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Content Area - Responsive Layout */}
+        <div
+          className={`flex-1 flex flex-col min-h-0 ${
+            layout === "horizontal" ? "md:flex-row" : "md:flex-col"
+          }`}
+        >
+          {/* Game UI Wrapper - Comes first in vertical (top), stays right in horizontal */}
+          {(activeGame || mobileTab === "game") && (
+            <div
+              className={`
+                ${mobileTab === "game" ? "flex" : "hidden"}
+                ${activeGame ? "md:flex" : ""}
+                flex-1 flex-col min-h-0 min-w-0 overflow-y-auto
+                ${
+                  layout === "horizontal"
+                    ? "md:order-2"
+                    : "md:order-1 md:border-b md:border-slate-800"
+                }
+              `}
+            >
+              <GameContainer />
+
+              {/* Mobile Game List (Empty State) */}
+              {!activeGame && (
+                <div className="flex-1 p-6 flex flex-col items-center justify-center text-center animate-in fade-in zoom-in-95 duration-300">
+                  <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mb-6 shadow-xl border border-slate-700 rotate-3">
+                    <Gamepad2 className="w-8 h-8 text-primary-400" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">
+                    Play a Game
+                  </h3>
+                  <p className="text-slate-400 mb-8 max-w-xs text-sm leading-relaxed">
+                    Challenge your friend to a game directly in the chat. Select
+                    a game below to send an invite.
+                  </p>
+
+                  <div className="grid gap-3 w-full max-w-sm">
+                    {gameRegistry.getAllDefinitions().map((game) => (
+                      <button
+                        key={game.id}
+                        onClick={() => {
+                          if (peerId) {
+                            createGame(game.id, peerId);
+                          }
+                        }}
+                        className="flex items-center gap-4 p-4 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 hover:border-primary-500/50 rounded-xl transition-all group text-left"
+                      >
+                        <div className="text-3xl group-hover:scale-110 transition-transform duration-300 bg-slate-900 rounded-lg p-2">
+                          {game.icon}
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-semibold text-slate-200 group-hover:text-primary-400 transition-colors">
+                            {game.name}
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5 line-clamp-1">
+                            {game.description}
+                          </div>
+                        </div>
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity -translate-x-2 group-hover:translate-x-0 duration-300">
+                          <ChevronLeft className="w-5 h-5 text-slate-400 rotate-180" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Messages Wrapper - Comes second in vertical (bottom), stays left in horizontal */}
+          <div
+            className={`
+              ${mobileTab === "chat" ? "flex" : "hidden"}
+              md:flex
+              flex-1 flex-col min-h-0 min-w-0
+              ${
+                layout === "horizontal"
+                  ? "md:order-1 md:border-r md:border-slate-800"
+                  : "md:order-2"
               }
-              className="flex-1 bg-transparent border-none focus:ring-0 text-slate-200 placeholder-slate-500 resize-none py-2.5 px-2 max-h-32 text-sm disabled:opacity-50 outline-none"
-              rows={1}
-              style={{ minHeight: "44px" }}
-            />
-            <button
-              type="submit"
-              disabled={!inputText.trim() || !isConnected}
-              className={`p-2.5 rounded-lg mb-0.5 transition-all ${
-                inputText.trim() && isConnected
-                  ? "bg-primary-600 text-white hover:bg-primary-500 shadow-lg shadow-primary-900/20"
-                  : "bg-slate-800 text-slate-500 cursor-not-allowed"
-              }`}
-            >
-              <Send className="w-5 h-5" />
-            </button>
-          </form>
+            `}
+          >
+            {/* Scrollable Messages Area */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-6">
+              {!session || session.messages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-slate-600 text-sm p-4 text-center">
+                  {connectionState === "connecting" ? (
+                    <div className="flex flex-col items-center gap-3 animate-pulse">
+                      <Activity className="w-8 h-8 text-primary-500 opacity-50" />
+                      <p>Establishing secure connection...</p>
+                    </div>
+                  ) : connectionState === "failed" ? (
+                    <div className="flex flex-col items-center gap-3">
+                      <AlertCircle className="w-8 h-8 text-red-500 opacity-50" />
+                      <p className="text-red-400/80">
+                        Could not connect to peer.
+                      </p>
+                      <button
+                        onClick={handleConnect}
+                        className="text-primary-500 hover:underline"
+                      >
+                        Try Again
+                      </button>
+                    </div>
+                  ) : (
+                    <p>No messages yet. Say hello!</p>
+                  )}
+                </div>
+              ) : (
+                session.messages.map((msg, index) => {
+                  const isMe = msg.senderId === myId;
+                  const showTimestamp =
+                    index === 0 ||
+                    msg.timestamp - session.messages[index - 1].timestamp >
+                      300000; // 5 mins
+
+                  return (
+                    <div key={msg.id} className="space-y-2">
+                      {showTimestamp && (
+                        <div className="flex justify-center my-4">
+                          <span className="text-[10px] text-slate-600 bg-slate-900/50 px-2 py-0.5 rounded-full border border-slate-800">
+                            {format(msg.timestamp, "MMM d, h:mm a")}
+                          </span>
+                        </div>
+                      )}
+                      <div
+                        className={`flex flex-col ${
+                          isMe ? "items-end" : "items-start"
+                        }`}
+                      >
+                        <div
+                          onClick={() =>
+                            setExpandedMessageId(
+                              expandedMessageId === msg.id ? null : msg.id
+                            )
+                          }
+                          className={`max-w-[85%] sm:max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm break-words cursor-pointer transition-all hover:opacity-90 ${
+                            isMe
+                              ? "bg-primary-600 text-white rounded-br-sm"
+                              : "bg-slate-800 text-slate-200 border border-slate-700 rounded-bl-sm"
+                          }`}
+                        >
+                          <MessageContent message={msg} />
+                          <div
+                            className={`text-[10px] mt-1 flex items-center gap-1 ${
+                              isMe ? "text-primary-200" : "text-slate-500"
+                            }`}
+                          >
+                            {/* Encryption indicator */}
+                            {msg.encrypted ? (
+                              <Lock className="w-2.5 h-2.5 opacity-60" />
+                            ) : (
+                              <LockOpen className="w-2.5 h-2.5 opacity-40" />
+                            )}
+                            {format(msg.timestamp, "h:mm a")}
+                            {isMe && msg.status && (
+                              <span className="ml-1">
+                                {msg.status === "read" && (
+                                  <CheckCheck className="w-3 h-3" />
+                                )}
+                                {msg.status === "delivered" && (
+                                  <Check className="w-3 h-3" />
+                                )}
+                                {msg.status === "sent" && (
+                                  <Check className="w-3 h-3 opacity-50" />
+                                )}
+                                {msg.status === "failed" && (
+                                  <AlertCircle className="w-3 h-3 text-red-200" />
+                                )}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {/* Failed message action */}
+                        {isMe && msg.status === "failed" && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onResendMessage(msg.id);
+                            }}
+                            className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 mt-1 px-1 transition-colors"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            Tap to retry
+                          </button>
+                        )}
+                        {/* Expanded Details */}
+                        {expandedMessageId === msg.id && (
+                          <div
+                            className={`mt-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-xs space-y-1 max-w-[85%] ${
+                              isMe ? "mr-0" : "ml-0"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 text-slate-400">
+                              <Clock className="w-3 h-3" />
+                              <span>
+                                Sent:{" "}
+                                {format(msg.timestamp, "MMM d, yyyy h:mm:ss a")}
+                              </span>
+                            </div>
+                            {msg.receivedAt && (
+                              <div className="flex items-center gap-2 text-slate-400">
+                                <Check className="w-3 h-3" />
+                                <span>
+                                  Delivered:{" "}
+                                  {format(msg.receivedAt, "h:mm:ss a")}
+                                </span>
+                              </div>
+                            )}
+                            {msg.readAt && (
+                              <div className="flex items-center gap-2 text-slate-400">
+                                <CheckCheck className="w-3 h-3" />
+                                <span>
+                                  Read: {format(msg.readAt, "h:mm:ss a")}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+
+              {/* Typing Indicator */}
+              {isPeerTyping && (
+                <div className="flex justify-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="bg-slate-800 border border-slate-700 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1 w-fit">
+                    <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                    <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                    <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></div>
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input Area */}
+            <div className="p-3 sm:p-4 border-t border-slate-800 bg-slate-950 safe-area-bottom">
+              <form
+                onSubmit={handleSubmit}
+                className={`relative flex items-end gap-0 md:gap-2 p-2 rounded-xl border ${
+                  isConnected
+                    ? "border-slate-700 bg-slate-900 focus-within:border-primary-500/50 focus-within:ring-1 focus-within:ring-primary-500/50"
+                    : "border-slate-800 bg-slate-900/50 opacity-75"
+                } transition-all`}
+              >
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowGameSelector(!showGameSelector)}
+                  disabled={!isConnected}
+                  className={`hidden md:block p-2.5 rounded-lg mb-0.5 transition-all text-slate-400 hover:text-white hover:bg-slate-800 ${
+                    !isConnected ? "cursor-not-allowed opacity-50" : ""
+                  } ${showGameSelector ? "bg-slate-800 text-white" : ""}`}
+                  title="Play a game"
+                >
+                  <Gamepad2 className="w-5 h-5" />
+                </button>
+
+                {showGameSelector && (
+                  <GameSelector
+                    onSelect={(gameId) => {
+                      if (peerId) {
+                        createGame(gameId, peerId);
+                        setShowGameSelector(false);
+                        // Switch to game tab on mobile
+                        if (window.innerWidth < 768) {
+                          setMobileTab("game");
+                        }
+                      }
+                    }}
+                    onClose={() => setShowGameSelector(false)}
+                  />
+                )}
+
+                <button
+                  type="button"
+                  onClick={triggerFileSelect}
+                  disabled={!isConnected}
+                  className={`p-2.5 rounded-lg mb-0.5 transition-all text-slate-400 hover:text-white hover:bg-slate-800 ${
+                    !isConnected ? "cursor-not-allowed opacity-50" : ""
+                  }`}
+                  title="Attach File"
+                >
+                  <Paperclip className="w-5 h-5" />
+                </button>
+                <textarea
+                  value={inputText}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  disabled={!isConnected}
+                  placeholder={
+                    isConnected
+                      ? "Type a message..."
+                      : `Status: ${statusConfig.text}`
+                  }
+                  className="flex-1 bg-transparent border-none focus:ring-0 text-slate-200 placeholder-slate-500 resize-none py-2.5 px-2 max-h-32 text-sm disabled:opacity-50 outline-none"
+                  rows={1}
+                  style={{ minHeight: "44px" }}
+                />
+                <button
+                  type="submit"
+                  disabled={!inputText.trim() || !isConnected}
+                  className={`p-2.5 rounded-lg mb-0.5 transition-all ${
+                    inputText.trim() && isConnected
+                      ? "bg-primary-600 text-white hover:bg-primary-500 shadow-lg shadow-primary-900/20"
+                      : "bg-slate-800 text-slate-500 cursor-not-allowed"
+                  }`}
+                >
+                  <Send className="w-5 h-5" />
+                </button>
+              </form>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -950,7 +1202,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   );
 };
 
-const MessageContent: React.FC<{ message: Message }> = ({ message }) => {
+function MessageContent({ message }: { message: Message }) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1057,4 +1309,4 @@ const MessageContent: React.FC<{ message: Message }> = ({ message }) => {
       {message.content}
     </div>
   );
-};
+}

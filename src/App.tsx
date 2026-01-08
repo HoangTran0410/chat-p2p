@@ -24,6 +24,7 @@ import {
 import { X } from "lucide-react";
 import { MAX_CONNECTIONS } from "./constants";
 import { useAppStore, useP2PStore } from "./stores";
+import { useGameStore } from "./stores/gameStore";
 
 export default function App() {
   // Zustand store for all state
@@ -48,6 +49,8 @@ export default function App() {
     pendingConnectPeerId,
     setPendingConnectPeerId,
   } = useAppStore();
+
+  const { handleGameMessage } = useGameStore();
 
   // Sync state
   const [syncStatus, setSyncStatus] = useState<
@@ -573,6 +576,7 @@ export default function App() {
     // Add listeners and collect cleanup functions
     const cleanups = [
       addListener("message", handleMessageReceived),
+      addListener("message", handleGameMessage),
       addListener("connectionOpened", handleConnectionOpened),
       addListener("connectionClosed", handleConnectionClosed),
       addListener("connectionLimitExceeded", handleConnectionLimitExceeded),
