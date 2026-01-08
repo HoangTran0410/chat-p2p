@@ -156,12 +156,59 @@ export const useP2PStore = create<P2PState>((set, get) => ({
     // @ts-ignore - PeerJS global fallback
     const PeerClass = (window.Peer as any) || Peer;
 
+    // RTCConfiguration for WebRTC connection
+    const rtcConfig: RTCConfiguration = {
+      iceServers: [
+        // TURN servers on port 443 FIRST (least likely blocked by firewall)
+        {
+          urls: "turns:global.relay.metered.ca:443?transport=tcp",
+          username: "85255418786a1fec898fa979",
+          credential: "gePlRCYyZJ2VMswp",
+        },
+        {
+          urls: "turn:global.relay.metered.ca:443",
+          username: "85255418786a1fec898fa979",
+          credential: "gePlRCYyZJ2VMswp",
+        },
+
+        // Fallback TURN servers on port 80
+        {
+          urls: "turn:global.relay.metered.ca:80?transport=tcp",
+          username: "85255418786a1fec898fa979",
+          credential: "gePlRCYyZJ2VMswp",
+        },
+        {
+          urls: "turn:global.relay.metered.ca:80",
+          username: "85255418786a1fec898fa979",
+          credential: "gePlRCYyZJ2VMswp",
+        },
+
+        // Google STUN servers (fallback for direct connection)
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+
+        // Metered STUN server
+        { urls: "stun:stun.relay.metered.ca:80" },
+      ],
+
+      // Force TURN for testing (comment out for auto selection)
+      // iceTransportPolicy: "relay", // 'relay' = TURN only, 'all' = auto
+
+      // Better ICE candidate gathering
+      iceCandidatePoolSize: 10,
+    };
+
+    console.log("[P2P Store] Initializing with RTCConfig:", rtcConfig);
+
     const newPeer = new PeerClass(sessionId, {
       host: config.host,
       port: config.port,
       path: config.path,
       secure: config.secure,
       debug: config.debug || 0,
+
+      // Pass RTCConfiguration to PeerJS
+      config: rtcConfig,
     });
 
     newPeer.on("open", (id: string) => {

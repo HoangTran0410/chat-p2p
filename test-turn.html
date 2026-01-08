@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>TURN Server Test</title>
+    <style>
+      body {
+        font-family: monospace;
+        padding: 20px;
+        background: #1a1a1a;
+        color: #fff;
+      }
+      #log {
+        background: #000;
+        padding: 10px;
+        border: 1px solid #333;
+        height: 500px;
+        overflow-y: auto;
+      }
+      .success {
+        color: #0f0;
+      }
+      .error {
+        color: #f00;
+      }
+      .info {
+        color: #0ff;
+      }
+      button {
+        padding: 10px 20px;
+        margin: 10px 5px;
+        font-size: 16px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>TURN Server Connectivity Test</h1>
+    <p>This page tests if your TURN servers are accessible and working.</p>
+
+    <button onclick="testTURN()">Test TURN Servers</button>
+    <button onclick="clearLog()">Clear Log</button>
+
+    <div id="log"></div>
+
+    <script>
+      const log = document.getElementById("log");
+
+      function addLog(message, type = "info") {
+        const div = document.createElement("div");
+        div.className = type;
+        div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        log.appendChild(div);
+        log.scrollTop = log.scrollHeight;
+      }
+
+      function clearLog() {
+        log.innerHTML = "";
+      }
+
+      async function testTURN() {
+        clearLog();
+        addLog("Starting TURN server test...", "info");
+
+        const config = {
+          iceServers: [
+            {
+              urls: "turns:global.relay.metered.ca:443?transport=tcp",
+              username: "85255418786a1fec898fa979",
+              credential: "gePlRCYyZJ2VMswp",
+            },
+            {
+              urls: "turn:global.relay.metered.ca:443",
+              username: "85255418786a1fec898fa979",
+              credential: "gePlRCYyZJ2VMswp",
+            },
+            {
+              urls: "turn:global.relay.metered.ca:80?transport=tcp",
+              username: "85255418786a1fec898fa979",
+              credential: "gePlRCYyZJ2VMswp",
+            },
+            {
+              urls: "turn:global.relay.metered.ca:80",
+              username: "85255418786a1fec898fa979",
+              credential: "gePlRCYyZJ2VMswp",
+            },
+          ],
+          iceTransportPolicy: "relay", // Force TURN only
+        };
+
+        addLog("Creating RTCPeerConnection with TURN-only config...", "info");
+
+        const pc = new RTCPeerConnection(config);
+
+        let relayFound = false;
+        let candidateCount = 0;
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            candidateCount++;
+            const candidate = event.candidate.candidate;
+            const type = event.candidate.type;
+
+            addLog(`Candidate ${candidateCount}: ${type}`, "info");
+            addLog(`  └─ ${candidate}`, "info");
+
+            if (type === "relay") {
+              relayFound = true;
+              addLog(
+                "✅ RELAY (TURN) candidate found! TURN is working!",
+                "success"
+              );
+            } else if (type === "srflx") {
+              addLog(
+                "⚠️  SRFLX (STUN) candidate found (should not happen with relay-only)",
+                "error"
+              );
+            } else if (type === "host") {
+              addLog(
+                "⚠️  HOST candidate found (should not happen with relay-only)",
+                "error"
+              );
+            }
+          } else {
+            addLog("--- ICE gathering complete ---", "info");
+
+            if (relayFound) {
+              addLog(
+                "✅ SUCCESS: TURN servers are working correctly!",
+                "success"
+              );
+            } else {
+              addLog("❌ FAILED: No TURN relay candidates found!", "error");
+              addLog("Possible issues:", "error");
+              addLog("  1. TURN credentials are invalid or expired", "error");
+              addLog("  2. TURN servers are unreachable", "error");
+              addLog("  3. Firewall blocking TURN ports", "error");
+              addLog("", "info");
+              addLog(
+                "Solution: Get new credentials from https://dashboard.metered.ca",
+                "info"
+              );
+            }
+          }
+        };
+
+        pc.onicegatheringstatechange = () => {
+          addLog(`ICE gathering state: ${pc.iceGatheringState}`, "info");
+        };
+
+        pc.oniceconnectionstatechange = () => {
+          addLog(`ICE connection state: ${pc.iceConnectionState}`, "info");
+        };
+
+        // Create a data channel to trigger ICE gathering
+        const dc = pc.createDataChannel("test");
+
+        try {
+          addLog("Creating offer...", "info");
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          addLog("Offer created, gathering ICE candidates...", "info");
+        } catch (error) {
+          addLog(`Error: ${error.message}`, "error");
+        }
+
+        // Cleanup after 10 seconds
+        setTimeout(() => {
+          pc.close();
+          addLog("Test complete. Connection closed.", "info");
+        }, 10000);
+      }
+    </script>
+  </body>
+</html>

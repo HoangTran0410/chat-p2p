@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      allowedHosts: ["460616b82467.ngrok-free.app"],
+      allowedHosts: ["1819ebeeb4ac.ngrok-free.app"],
       port: 3000,
       host: "0.0.0.0",
     },

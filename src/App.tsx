@@ -152,7 +152,6 @@ export default function App() {
 
   const handleSaveConfig = (config: typeof peerConfig) => {
     setPeerConfig(config);
-    // useP2P will auto-reconnect due to dependency change
   };
 
   const handleMessageReceived = useCallback(
