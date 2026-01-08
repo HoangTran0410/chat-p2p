@@ -127,6 +127,35 @@ export const useP2P = ({
         path: config.path,
         secure: config.secure,
         debug: config.debug || 0,
+
+        // get free account on metered.ca
+        config: {
+          iceServers: [
+            {
+              urls: "stun:stun.relay.metered.ca:80",
+            },
+            {
+              urls: "turn:global.relay.metered.ca:80",
+              username: "85255418786a1fec898fa979",
+              credential: "gePlRCYyZJ2VMswp",
+            },
+            {
+              urls: "turn:global.relay.metered.ca:80?transport=tcp",
+              username: "85255418786a1fec898fa979",
+              credential: "gePlRCYyZJ2VMswp",
+            },
+            {
+              urls: "turn:global.relay.metered.ca:443",
+              username: "85255418786a1fec898fa979",
+              credential: "gePlRCYyZJ2VMswp",
+            },
+            {
+              urls: "turns:global.relay.metered.ca:443?transport=tcp",
+              username: "85255418786a1fec898fa979",
+              credential: "gePlRCYyZJ2VMswp",
+            },
+          ],
+        },
       });
 
       newPeer.on("open", (id: string) => {

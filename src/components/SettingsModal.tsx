@@ -98,7 +98,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6">
+        {/* <form onSubmit={handleSubmit} className="p-6">
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-slate-400 mb-1">
@@ -206,7 +206,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
           </div>
-        </form>
+        </form> */}
 
         {/* Security Section */}
         {myFingerprint && (
