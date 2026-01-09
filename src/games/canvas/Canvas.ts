@@ -1,5 +1,5 @@
-import { BaseRealTimeGame } from "../BaseRealTimeGame";
-import { GameSession, RealTimeAction } from "../types";
+import { BaseGame } from "../BaseGame";
+import { GameSession } from "../types";
 import { CanvasUI } from "./CanvasUI";
 import React from "react";
 
@@ -22,39 +22,38 @@ export interface Point {
   y: number;
 }
 
-// Action types
-export type CanvasAction =
+// Input types
+export type CanvasInput =
   | { type: "draw"; stroke: DrawStroke }
   | { type: "clear" };
 
-export class CollaborativeCanvas extends BaseRealTimeGame<
-  CanvasData,
-  CanvasAction
-> {
+export class CollaborativeCanvas extends BaseGame<CanvasData, CanvasInput> {
   readonly gameId = "canvas";
   readonly gameName = "Draw Together";
   readonly gameIcon = "🎨";
   readonly gameDescription = "Collaborative drawing canvas";
 
-  createInitialState(hostId: string, guestId: string): CanvasData {
+  createInitialState(hostId: string, clientId: string): CanvasData {
     return {
       strokes: [],
     };
   }
 
-  applyAction(
+  handleInput(
     state: GameSession<CanvasData>,
-    action: RealTimeAction<CanvasAction>
+    input: CanvasInput,
+    playerId: string,
+    isHost: boolean
   ): GameSession<CanvasData> {
-    const { payload } = action;
+    // Both host and client apply immediately (client-side prediction for real-time drawing)
 
-    switch (payload.type) {
+    switch (input.type) {
       case "draw":
         return {
           ...state,
           data: {
             ...state.data,
-            strokes: [...state.data.strokes, payload.stroke],
+            strokes: [...state.data.strokes, input.stroke],
           },
           updatedAt: Date.now(),
         };
@@ -74,15 +73,16 @@ export class CollaborativeCanvas extends BaseRealTimeGame<
     }
   }
 
-  renderGame(
+  render(
     state: GameSession<CanvasData>,
     myId: string,
-    onAction: (payload: CanvasAction) => void
+    isHost: boolean,
+    onInput: (input: CanvasInput) => void
   ): React.ReactNode {
     return React.createElement(CanvasUI, {
       state,
       myId,
-      onAction,
+      onAction: onInput, // CanvasUI expects onAction
     });
   }
 }

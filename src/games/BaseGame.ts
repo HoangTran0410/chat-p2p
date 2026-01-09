@@ -1,27 +1,37 @@
 import { ReactNode } from "react";
-import {
-  GameSession,
-  GameAction,
-  GameDefinition,
-  GameMoveAction,
-} from "./types";
+import { GameSession, GameDefinition } from "./types";
 
 /**
- * Abstract base class for all P2P games.
- * Each game implementation must extend this class.
+ * Abstract base class for all P2P games using host-client architecture.
  *
- * TGameData: Type of game-specific state data
- * TMovePayload: Type of move payload for this game
+ * Host-Client Model:
+ * - Host: Runs main game logic (whoever creates the game)
+ * - Client: Syncs state from host (whoever accepts the invite)
  *
- * @example
+ * Features:
+ * - Event-driven: Only syncs when player takes action (minimal P2P traffic)
+ * - Client-side prediction: Instant UI feedback despite network latency
+ * - Universal: Works for ALL game types (turn-based, real-time, simultaneous)
+ *
+ * @example Turn-based game (TicTacToe, Chess)
  * class TicTacToe extends BaseGame<TicTacToeData, TicTacToeMove> {
- *   // implement abstract methods
+ *   handleInput(state, input, playerId, isHost) {
+ *     // Both host and client apply move optimistically
+ *     // Host also validates and syncs authoritative state
+ *   }
+ * }
+ *
+ * @example Real-time game (Canvas, YouTube)
+ * class Canvas extends BaseGame<CanvasData, DrawAction> {
+ *   handleInput(state, input, playerId, isHost) {
+ *     // Both host and client apply drawing immediately
+ *     // Host syncs to keep in sync
+ *   }
  * }
  */
-export abstract class BaseGame<
-  TGameData = Record<string, any>,
-  TMovePayload = any
-> {
+export abstract class BaseGame<TGameData = Record<string, any>, TInput = any> {
+  // ==================== Metadata ====================
+
   /**
    * Unique identifier for this game type
    */
@@ -62,66 +72,95 @@ export abstract class BaseGame<
    * Create initial game state when game starts
    * Called by host when guest accepts invite
    */
-  abstract createInitialState(hostId: string, guestId: string): TGameData;
+  abstract createInitialState(hostId: string, clientId: string): TGameData;
 
   /**
-   * Apply a move action to the current state
-   * Returns new state (immutable pattern)
-   * Only called on HOST side
+   * Handle player input - THE MAIN METHOD
+   *
+   * Called when player takes action (click, draw, move, etc.)
+   * This is event-driven - only called on user interaction, not continuously.
+   *
+   * CLIENT-SIDE PREDICTION:
+   * - Both host AND client call this method and apply result immediately
+   * - Client applies optimistically for instant UI feedback (no lag!)
+   * - Client also sends input to host for validation
+   * - Host processes, validates, and syncs authoritative state back
+   * - Client reconciles when receiving authoritative state
+   *
+   * @param state Current game state
+   * @param input Player input data
+   * @param playerId Who performed the action
+   * @param isHost Whether current player is the host
+   * @returns Updated state (both host and client return new state)
    */
-  abstract applyMove(
+  abstract handleInput(
     state: GameSession<TGameData>,
-    action: GameMoveAction<TMovePayload>
+    input: TInput,
+    playerId: string,
+    isHost: boolean
   ): GameSession<TGameData>;
 
   /**
-   * Validate if a move is legal
-   * Check player turn, game rules, etc.
+   * Check if game has ended (OPTIONAL)
+   * Called by host after each handleInput to determine win/draw/continue
    */
-  abstract isValidMove(
-    state: GameSession<TGameData>,
-    action: GameMoveAction<TMovePayload>
-  ): boolean;
-
-  /**
-   * Check if game has ended
-   * Returns winner ID, null if no winner yet, or 'draw' for draw
-   */
-  abstract checkGameEnd(state: GameSession<TGameData>): {
+  checkGameEnd?(state: GameSession<TGameData>): {
     isEnded: boolean;
     winner: string | null;
     isDraw: boolean;
   };
 
+  // ==================== Networking ====================
+
+  /**
+   * Get state snapshot for syncing to client (OPTIONAL)
+   *
+   * Override to optimize network traffic by sending only changed data.
+   * Default: sends full state (simple but less efficient)
+   *
+   * @example Delta compression for Canvas
+   * getStateSnapshot(state) {
+   *   // Only send strokes added since last sync
+   *   return { ...state, data: { newStrokes: [...] } };
+   * }
+   */
+  getStateSnapshot(state: GameSession<TGameData>): GameSession<TGameData> {
+    return state;
+  }
+
+  /**
+   * Apply received state snapshot from host (OPTIONAL)
+   *
+   * Override for client-side interpolation or conflict resolution.
+   * Default: replace entire state with authoritative state from host
+   *
+   * @example Smooth interpolation
+   * applyStateSnapshot(currentState, snapshot) {
+   *   // Interpolate between current and new state for smooth animation
+   *   return interpolate(currentState, snapshot);
+   * }
+   */
+  applyStateSnapshot(
+    currentState: GameSession<TGameData>,
+    snapshot: GameSession<TGameData>
+  ): GameSession<TGameData> {
+    return snapshot;
+  }
+
   // ==================== UI Rendering ====================
 
   /**
    * Render the game UI
+   *
    * @param state Current game state
    * @param myId Current player's ID
-   * @param onMove Callback when player makes a move
-   * @param isMyTurn Whether it's current player's turn
+   * @param isHost Whether current player is host
+   * @param onInput Callback to send input (call only when user takes action!)
    */
-  abstract renderGame(
+  abstract render(
     state: GameSession<TGameData>,
     myId: string,
-    onMove: (payload: TMovePayload) => void,
-    isMyTurn: boolean
+    isHost: boolean,
+    onInput: (input: TInput) => void
   ): ReactNode;
-
-  // ==================== Helpers ====================
-
-  /**
-   * Get next player's turn
-   */
-  getNextTurn(state: GameSession<TGameData>): string {
-    return state.currentTurn === state.hostId ? state.guestId : state.hostId;
-  }
-
-  /**
-   * Check if it's a specific player's turn
-   */
-  isPlayerTurn(state: GameSession<TGameData>, playerId: string): boolean {
-    return state.currentTurn === playerId && state.status === "playing";
-  }
 }

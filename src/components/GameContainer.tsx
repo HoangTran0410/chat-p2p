@@ -19,13 +19,7 @@ export const GameContainer: React.FC<GameContainerProps> = ({
   if (!activeGame || !myId) return null;
 
   const gameImpl = gameRegistry.createInstance(activeGame.gameType);
-  const gameDef = gameRegistry.getDefinition(activeGame.gameType);
   if (!gameImpl) return null; // Should not happen
-
-  // Check if it's my turn (only for turn-based games)
-  const isMyTurn = gameDef?.isRealTime
-    ? true // Real-time games don't have turns
-    : (gameImpl as any).isPlayerTurn?.(activeGame, myId) ?? false;
 
   return (
     <div className="bg-slate-900 border-b border-slate-800 flex flex-col transition-all duration-300">
@@ -110,11 +104,11 @@ export const GameContainer: React.FC<GameContainerProps> = ({
               </button>
             </div>
           )}
-          {gameImpl.renderGame(
+          {gameImpl.render(
             activeGame,
             myId,
-            (payload) => makeMove(payload), // Wrap to match generic signature
-            isMyTurn
+            myId === activeGame.hostId,
+            (payload) => makeMove(payload)
           )}
         </div>
       )}

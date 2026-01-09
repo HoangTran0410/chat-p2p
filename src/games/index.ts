@@ -16,5 +16,4 @@ gameRegistry.register(YouTubeSync);
 // Export for convenience
 export { gameRegistry } from "./registry";
 export { BaseGame } from "./BaseGame";
-export { BaseRealTimeGame } from "./BaseRealTimeGame";
 export * from "./types";

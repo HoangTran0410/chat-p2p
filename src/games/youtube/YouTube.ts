@@ -1,5 +1,5 @@
-import { BaseRealTimeGame } from "../BaseRealTimeGame";
-import { GameSession, RealTimeAction } from "../types";
+import { BaseGame } from "../BaseGame";
+import { GameSession } from "../types";
 import { YouTubeUI } from "./YouTubeUI";
 import React from "react";
 
@@ -10,20 +10,20 @@ export interface YouTubeData {
   currentTime: number;
 }
 
-// Action types
-export type YouTubeAction =
+// Input types
+export type YouTubeInput =
   | { type: "load_video"; videoId: string }
   | { type: "play"; time: number }
   | { type: "pause"; time: number }
   | { type: "seek"; time: number };
 
-export class YouTubeSync extends BaseRealTimeGame<YouTubeData, YouTubeAction> {
+export class YouTubeSync extends BaseGame<YouTubeData, YouTubeInput> {
   readonly gameId = "youtube";
   readonly gameName = "Watch Together";
   readonly gameIcon = "📺";
   readonly gameDescription = "Watch YouTube videos together";
 
-  createInitialState(hostId: string, guestId: string): YouTubeData {
+  createInitialState(hostId: string, clientId: string): YouTubeData {
     return {
       videoId: null,
       isPlaying: false,
@@ -31,18 +31,20 @@ export class YouTubeSync extends BaseRealTimeGame<YouTubeData, YouTubeAction> {
     };
   }
 
-  applyAction(
+  handleInput(
     state: GameSession<YouTubeData>,
-    action: RealTimeAction<YouTubeAction>
+    input: YouTubeInput,
+    playerId: string,
+    isHost: boolean
   ): GameSession<YouTubeData> {
-    const { payload } = action;
+    // Both host and client apply immediately (realtime sync)
 
-    switch (payload.type) {
+    switch (input.type) {
       case "load_video":
         return {
           ...state,
           data: {
-            videoId: payload.videoId,
+            videoId: input.videoId,
             isPlaying: false,
             currentTime: 0,
           },
@@ -55,7 +57,7 @@ export class YouTubeSync extends BaseRealTimeGame<YouTubeData, YouTubeAction> {
           data: {
             ...state.data,
             isPlaying: true,
-            currentTime: payload.time,
+            currentTime: input.time,
           },
           updatedAt: Date.now(),
         };
@@ -66,7 +68,7 @@ export class YouTubeSync extends BaseRealTimeGame<YouTubeData, YouTubeAction> {
           data: {
             ...state.data,
             isPlaying: false,
-            currentTime: payload.time,
+            currentTime: input.time,
           },
           updatedAt: Date.now(),
         };
@@ -76,7 +78,7 @@ export class YouTubeSync extends BaseRealTimeGame<YouTubeData, YouTubeAction> {
           ...state,
           data: {
             ...state.data,
-            currentTime: payload.time,
+            currentTime: input.time,
           },
           updatedAt: Date.now(),
         };
@@ -86,15 +88,16 @@ export class YouTubeSync extends BaseRealTimeGame<YouTubeData, YouTubeAction> {
     }
   }
 
-  renderGame(
+  render(
     state: GameSession<YouTubeData>,
     myId: string,
-    onAction: (payload: YouTubeAction) => void
+    isHost: boolean,
+    onInput: (input: YouTubeInput) => void
   ): React.ReactNode {
     return React.createElement(YouTubeUI, {
       state,
       myId,
-      onAction,
+      onAction: onInput, // YouTubeUI expects onAction
     });
   }
 }

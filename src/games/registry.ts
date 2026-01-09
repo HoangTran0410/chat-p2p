@@ -1,11 +1,11 @@
 import { BaseGame } from "./BaseGame";
-import { BaseRealTimeGame } from "./BaseRealTimeGame";
 import { GameDefinition } from "./types";
 
-// Type for game constructor - supports both turn-based and real-time games
-type GameConstructor<TData = any, TMove = any> =
-  | (new () => BaseGame<TData, TMove>)
-  | (new () => BaseRealTimeGame<TData, TMove>);
+// Type for game constructor - unified BaseGame only
+type GameConstructor<TData = any, TInput = any> = new () => BaseGame<
+  TData,
+  TInput
+>;
 
 /**
  * Registry of all available games
@@ -17,9 +17,8 @@ class GameRegistry {
 
   /**
    * Register a game class (not instance)
-   * Supports both BaseGame and BaseRealTimeGame
    */
-  register<TData, TMove>(GameClass: GameConstructor<TData, TMove>): void {
+  register<TData, TInput>(GameClass: GameConstructor<TData, TInput>): void {
     // Create temporary instance to get gameId and definition
     const tempInstance = new GameClass();
     const gameId = tempInstance.gameId;
@@ -39,11 +38,9 @@ class GameRegistry {
   /**
    * Create a new instance of a game by its ID
    * Each call creates a fresh instance
-   * Returns either BaseGame or BaseRealTimeGame instance
+   * Returns unified BaseGame instance
    */
-  createInstance(
-    gameId: string
-  ): BaseGame<any, any> | BaseRealTimeGame<any, any> | null {
+  createInstance(gameId: string): BaseGame<any, any> | null {
     const GameClass = this.gameClasses.get(gameId);
     if (!GameClass) {
       console.warn(`Game ${gameId} not found in registry`);

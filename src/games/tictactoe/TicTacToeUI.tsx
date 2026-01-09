@@ -1,13 +1,14 @@
 import React from "react";
 import { GameSession } from "../types";
-import { TicTacToeData, TicTacToeMove } from "./TicTacToe";
-import { X, Circle } from "lucide-react";
+import { TicTacToeData } from "./TicTacToe";
+import { X, Circle, RefreshCcw } from "lucide-react";
 import { useGameStore } from "../../stores/gameStore";
 
 interface TicTacToeUIProps {
   state: GameSession<TicTacToeData>;
   myId: string;
-  onMove: (index: TicTacToeMove) => void;
+  onMove: (index: number) => void;
+  onSwitchTurn: () => void;
   isMyTurn: boolean;
 }
 
@@ -15,6 +16,7 @@ export function TicTacToeUI({
   state,
   myId,
   onMove,
+  onSwitchTurn,
   isMyTurn,
 }: TicTacToeUIProps) {
   const { board } = state.data;
@@ -43,6 +45,16 @@ export function TicTacToeUI({
   };
 
   const winningLine = getWinnerLine();
+
+  const getLastMove = (): number | null => {
+    // Find the last non-null cell
+    for (let i = board.length - 1; i >= 0; i--) {
+      if (board[i] !== null) return i;
+    }
+    return null;
+  };
+
+  const lastMoveIndex = getLastMove();
 
   const handleCellClick = (index: number) => {
     if (!isMyTurn || board[index] || state.status !== "playing") return;
@@ -81,12 +93,27 @@ export function TicTacToeUI({
             {mySymbol === "X" ? "O" : "X"}
           </span>
         </div>
+
+        {/* Switch Turn button - only show when board is empty */}
+        {state.status === "playing" &&
+          board.every((cell) => cell === null) &&
+          isMyTurn && (
+            <button
+              onClick={onSwitchTurn}
+              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-300 text-sm font-medium transition-colors flex items-center gap-2"
+              title="Give first move to opponent"
+            >
+              <RefreshCcw className="w-4 h-4" />
+              Give First Move
+            </button>
+          )}
       </div>
 
       {/* Game Board */}
       <div className="grid grid-cols-3 gap-3 bg-slate-800 p-3 rounded-xl relative">
         {board.map((cell, index) => {
           const isWinningCell = winningLine?.includes(index);
+          const isLastMove = lastMoveIndex === index;
           const canInteract = isMyTurn && !cell && state.status === "playing";
 
           return (
@@ -102,6 +129,11 @@ export function TicTacToeUI({
                     : "bg-slate-750 hover:bg-slate-700"
                 }
                 ${isWinningCell ? "bg-green-500/20 ring-2 ring-green-500" : ""}
+                ${
+                  isLastMove && !isWinningCell
+                    ? "bg-amber-500/20 ring-2 ring-amber-500/50"
+                    : ""
+                }
                 ${
                   canInteract
                     ? "cursor-pointer hover:ring-2 hover:ring-primary-500/50"

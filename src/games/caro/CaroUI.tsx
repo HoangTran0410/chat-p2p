@@ -1,21 +1,34 @@
 import React, { useState, useRef, useEffect } from "react";
 import { GameSession } from "../types";
 import { CaroData, CaroMove } from "./Caro";
-import { X, Circle, Target, Undo, RotateCcw } from "lucide-react";
+import { X, Circle, Target, Undo, RotateCcw, RefreshCcw } from "lucide-react";
 import { useGameStore } from "../../stores/gameStore";
 
 interface CaroUIProps {
   state: GameSession<CaroData>;
   myId: string;
   onMove: (move: CaroMove) => void;
+  onSwitchTurn: () => void;
+  onUndoRequest: () => void;
+  onUndoConfirm: () => void;
+  onUndoDecline: () => void;
   isMyTurn: boolean;
 }
 
 const BOARD_SIZE = 50;
 const CELL_SIZE = 40;
 
-export function CaroUI({ state, myId, onMove, isMyTurn }: CaroUIProps) {
-  const { board, winningLine } = state.data;
+export function CaroUI({
+  state,
+  myId,
+  onMove,
+  onSwitchTurn,
+  onUndoRequest,
+  onUndoConfirm,
+  onUndoDecline,
+  isMyTurn,
+}: CaroUIProps) {
+  const { board, winningLine, pendingUndoRequest } = state.data;
   const isHost = myId === state.hostId;
   const mySymbol = isHost ? "X" : "O";
   const { leaveGame } = useGameStore();
@@ -152,6 +165,17 @@ export function CaroUI({ state, myId, onMove, isMyTurn }: CaroUIProps) {
         const isWinning = winningLine?.some(([r, c]) => r === row && c === col);
         const lastMove = getLastMove();
         const isLast = lastMove && lastMove.row === row && lastMove.col === col;
+
+        // Draw highlight for last move (full cell background)
+        if (isLast && !isWinning) {
+          ctx.fillStyle = "rgba(251, 191, 36, 0.25)"; // amber with transparency
+          ctx.fillRect(
+            offsetX + i * cellSize,
+            offsetY + j * cellSize,
+            cellSize,
+            cellSize
+          );
+        }
 
         if (symbol === "X") {
           ctx.strokeStyle = isWinning ? "#4ade80" : "#3b82f6";
@@ -333,8 +357,13 @@ export function CaroUI({ state, myId, onMove, isMyTurn }: CaroUIProps) {
     const lastMove = getLastMove();
     if (!lastMove) return;
 
-    const targetX = Math.max(0, lastMove.col - 3);
-    const targetY = Math.max(0, lastMove.row - 3);
+    // Calculate how many cells are visible in the viewport
+    const visibleCols = canvasSize.width / CELL_SIZE;
+    const visibleRows = canvasSize.height / CELL_SIZE;
+
+    // Center the last move in the viewport (add 0.5 to center the cell itself)
+    const targetX = Math.max(0, lastMove.col - visibleCols / 2 + 0.5);
+    const targetY = Math.max(0, lastMove.row - visibleRows / 2 + 0.5);
 
     // Smooth animation
     const startX = viewport.x;
@@ -401,7 +430,7 @@ export function CaroUI({ state, myId, onMove, isMyTurn }: CaroUIProps) {
         </div>
 
         {/* Controls */}
-        <div className="flex gap-2 text-xs">
+        <div className="flex gap-1 md:gap-2 text-xs">
           {state.status === "finished" ? (
             <button
               onClick={() => useGameStore.getState().restartGame()}
@@ -411,7 +440,7 @@ export function CaroUI({ state, myId, onMove, isMyTurn }: CaroUIProps) {
               <RotateCcw className="w-3 h-3" />
               <span>New Game</span>
             </button>
-          ) : (
+          ) : Object.keys(board).length > 0 ? (
             <button
               onClick={focusLastMove}
               disabled={Object.keys(board).length === 0}
@@ -421,9 +450,77 @@ export function CaroUI({ state, myId, onMove, isMyTurn }: CaroUIProps) {
               <Target className="w-3 h-3" />
               <span>Last</span>
             </button>
-          )}
+          ) : null}
+
+          {/* Request Undo button - only show when opponent just moved */}
+          {state.status === "playing" &&
+            Object.keys(board).length > 0 &&
+            !isMyTurn &&
+            !pendingUndoRequest && (
+              <button
+                onClick={onUndoRequest}
+                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 flex items-center gap-1"
+                title="Request undo from opponent"
+              >
+                <Undo className="w-3 h-3" />
+                <span>Undo</span>
+              </button>
+            )}
+
+          {/* Switch Turn button - only show when board is empty */}
+          {state.status === "playing" &&
+            Object.keys(board).length === 0 &&
+            isMyTurn && (
+              <button
+                onClick={onSwitchTurn}
+                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 flex items-center gap-1"
+                title="Give first move to opponent"
+              >
+                <RefreshCcw className="w-3 h-3" />
+                <span>Give First Move</span>
+              </button>
+            )}
         </div>
       </div>
+
+      {/* Undo Request Notification - separate section */}
+      {pendingUndoRequest && (
+        <div className="px-3 py-2 bg-slate-800/50 rounded-lg border border-slate-700">
+          {/* Waiting for opponent response (I requested) */}
+          {pendingUndoRequest === myId && (
+            <div className="flex items-center justify-center gap-2 text-sm text-amber-400">
+              <Undo className="w-4 h-4 animate-pulse" />
+              <span>Waiting for opponent to respond to undo request...</span>
+            </div>
+          )}
+
+          {/* Undo confirmation buttons - opponent is asking me */}
+          {pendingUndoRequest !== myId && (
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm text-slate-300">
+                <Undo className="w-4 h-4 text-amber-400" />
+                <span>Opponent is requesting to undo their last move</span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={onUndoConfirm}
+                  className="px-3 py-1.5 bg-green-600 hover:bg-green-500 rounded text-white text-sm font-medium flex items-center gap-1.5"
+                  title="Allow undo"
+                >
+                  <span>Allow</span>
+                </button>
+                <button
+                  onClick={onUndoDecline}
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded text-white text-sm font-medium flex items-center gap-1.5"
+                  title="Deny undo"
+                >
+                  <span>Deny</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Canvas */}
       <div ref={containerRef} className="flex-1 min-h-0">

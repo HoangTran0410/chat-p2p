@@ -1,11 +1,5 @@
 import { create } from "zustand";
-import {
-  GameSession,
-  PendingGameInvite,
-  GameMessage,
-  GameMoveAction,
-  RealTimeAction,
-} from "../games/types";
+import { GameSession, PendingGameInvite, GameMessage } from "../games/types";
 import { gameRegistry } from "../games";
 import { useP2PStore } from "./p2pStore";
 
@@ -23,7 +17,7 @@ interface GameState {
   clearPendingInvites: () => void;
 
   // Game flow actions
-  createGame: (gameType: string, guestId: string) => string | null;
+  createGame: (gameType: string, clientId: string) => string | null;
   acceptInvite: (sessionId: string) => void;
   declineInvite: (sessionId: string) => void;
   makeMove: (payload: any) => void;
@@ -62,7 +56,7 @@ export const useGameStore = create<GameState>((set, get) => ({
    * Create a new game and send invite to peer
    * Returns session ID if successful
    */
-  createGame: (gameType, guestId) => {
+  createGame: (gameType, clientId) => {
     const { sendMessage, myId } = useP2PStore.getState();
     const game = gameRegistry.createInstance(gameType);
 
@@ -71,16 +65,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     const sessionId = generateSessionId();
 
     // Initialize game state immediately so UI doesn't crash while waiting
-    const initialData = game.createInitialState(myId, guestId);
+    const initialData = game.createInitialState(myId, clientId);
 
-    // Create initial session (waiting for guest to accept)
+    // Create initial session (waiting for client to accept)
     const session: GameSession = {
       id: sessionId,
       gameType,
       hostId: myId,
-      guestId,
+      clientId,
       status: "waiting",
-      currentTurn: myId, // Host goes first
       winner: null,
       isDraw: false,
       data: initialData,
@@ -91,7 +84,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ activeGame: session });
 
     // Send invite to peer
-    sendMessage(guestId, {
+    sendMessage(clientId, {
       type: "game_invite",
       gameType,
       sessionId,
@@ -133,9 +126,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       id: sessionId,
       gameType: invite.gameType,
       hostId: invite.hostId,
-      guestId: myId,
+      clientId: myId,
       status: "waiting", // Will update to 'playing' when we get sync
-      currentTurn: invite.hostId,
       winner: null,
       isDraw: false,
       data: initialData,
@@ -168,7 +160,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   /**
    * Make a move/action in the current game
-   * Handles both turn-based and real-time games
+   * Uses new BaseGame architecture with client-side prediction
    */
   makeMove: (payload) => {
     const state = get();
@@ -178,102 +170,53 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!activeGame || activeGame.status !== "playing" || !myId) return;
 
     const game = gameRegistry.createInstance(activeGame.gameType);
-    const gameDef = gameRegistry.getDefinition(activeGame.gameType);
     if (!game) return;
 
-    const peerId =
-      myId === activeGame.hostId ? activeGame.guestId : activeGame.hostId;
+    const isHost = myId === activeGame.hostId;
+    const peerId = isHost ? activeGame.clientId : activeGame.hostId;
 
-    // Check if game is real-time
-    if (gameDef?.isRealTime) {
-      // Real-time game: Apply action locally and broadcast
-      const action: RealTimeAction = {
-        type: "action",
-        playerId: myId,
-        timestamp: Date.now(),
-        payload,
-      };
+    // CLIENT-SIDE PREDICTION: Apply input immediately for instant feedback
+    let newState = game.handleInput(activeGame, payload, myId, isHost);
 
-      // Apply action locally (both players apply immediately)
-      let newState = (game as any).applyAction(activeGame, action);
-
-      // Check for game end (if game implements it)
-      if (typeof (game as any).checkGameEnd === "function") {
-        const endResult = (game as any).checkGameEnd(newState);
-        if (endResult.isEnded) {
-          newState = {
-            ...newState,
-            status: "finished",
-            winner: endResult.winner,
-            isDraw: endResult.isDraw,
-          };
-        }
+    // Check for game end (if game implements it)
+    if (game.checkGameEnd) {
+      const endResult = game.checkGameEnd(newState);
+      if (endResult.isEnded) {
+        newState = {
+          ...newState,
+          status: "finished",
+          winner: endResult.winner,
+          isDraw: endResult.isDraw,
+        };
       }
+    }
 
-      newState.updatedAt = Date.now();
-      set({ activeGame: newState });
+    newState.updatedAt = Date.now();
+    set({ activeGame: newState });
 
-      // Broadcast action to opponent (they will apply it too)
+    if (isHost) {
+      // Host: Send input to client AND sync authoritative state
       sendMessage(peerId, {
-        type: "game_realtime_action",
+        type: "game_input",
         sessionId: activeGame.id,
-        action,
+        playerId: myId,
+        input: payload,
+      });
+
+      // Also sync state for reconciliation
+      sendMessage(peerId, {
+        type: "game_state_sync",
+        sessionId: activeGame.id,
+        state: newState,
       });
     } else {
-      // Turn-based game: Use existing host authority model
-      const action: GameMoveAction = {
-        type: "move",
+      // Client: Send input to host for validation
+      sendMessage(peerId, {
+        type: "game_input",
+        sessionId: activeGame.id,
         playerId: myId,
-        timestamp: Date.now(),
-        payload,
-      };
-
-      // Validate move
-      if (!(game as any).isValidMove(activeGame, action)) {
-        console.warn("Invalid move attempted");
-        return;
-      }
-
-      const isHost = myId === activeGame.hostId;
-
-      if (isHost) {
-        // Host: Apply move locally and sync state to guest
-        let newState = (game as any).applyMove(activeGame, action);
-
-        // Check for game end
-        const endResult = (game as any).checkGameEnd(newState);
-        if (endResult.isEnded) {
-          newState = {
-            ...newState,
-            status: "finished",
-            winner: endResult.winner,
-            isDraw: endResult.isDraw,
-          };
-        } else {
-          // Switch turn
-          newState = {
-            ...newState,
-            currentTurn: (game as any).getNextTurn(newState),
-          };
-        }
-
-        newState.updatedAt = Date.now();
-        set({ activeGame: newState });
-
-        // Sync state to guest
-        sendMessage(peerId, {
-          type: "game_state_sync",
-          sessionId: activeGame.id,
-          state: newState,
-        });
-      } else {
-        // Guest: Send action to host for processing
-        sendMessage(peerId, {
-          type: "game_action",
-          sessionId: activeGame.id,
-          action,
-        });
-      }
+        input: payload,
+      });
     }
   },
 
@@ -292,17 +235,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!game) return;
 
     const peerId =
-      myId === activeGame.hostId ? activeGame.guestId : activeGame.hostId;
+      myId === activeGame.hostId ? activeGame.clientId : activeGame.hostId;
 
     // Reset game state
     const resetData = game.createInitialState(
       activeGame.hostId,
-      activeGame.guestId
+      activeGame.clientId
     );
     const newState: GameSession = {
       ...activeGame,
       status: "playing",
-      currentTurn: activeGame.hostId, // Host always starts
       winner: null,
       isDraw: false,
       data: resetData,
@@ -333,7 +275,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     const peerId =
-      myId === activeGame.hostId ? activeGame.guestId : activeGame.hostId;
+      myId === activeGame.hostId ? activeGame.clientId : activeGame.hostId;
 
     sendMessage(peerId, {
       type: "game_leave",
@@ -371,7 +313,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (!game) break;
 
         // Initialize game state
-        const initialData = game.createInitialState(myId, activeGame.guestId);
+        const initialData = game.createInitialState(myId, activeGame.clientId);
         const newState: GameSession = {
           ...activeGame,
           status: "playing",
@@ -381,8 +323,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
         set({ activeGame: newState });
 
-        // Sync initial state to guest
-        sendMessage(activeGame.guestId, {
+        // Sync initial state to client
+        sendMessage(activeGame.clientId, {
           type: "game_state_sync",
           sessionId: activeGame.id,
           state: newState,
@@ -399,83 +341,28 @@ export const useGameStore = create<GameState>((set, get) => ({
         break;
       }
 
-      case "game_action": {
-        // Received action from guest (we are host)
-        // Only for turn-based games
+      case "game_input": {
+        // Received input from peer
         const { activeGame } = state;
         if (!activeGame || activeGame.id !== message.sessionId || !myId) break;
-        if (myId !== activeGame.hostId) break; // Only host processes actions
-
-        const game = gameRegistry.createInstance(activeGame.gameType);
-        const gameDef = gameRegistry.getDefinition(activeGame.gameType);
-        if (!game) break;
-
-        // Skip if this is a real-time game (they use game_realtime_action instead)
-        if (gameDef?.isRealTime) break;
-
-        const action = message.action as GameMoveAction;
-
-        // Validate and apply (turn-based game methods)
-        if (!(game as any).isValidMove(activeGame, action)) {
-          console.warn("Invalid move from guest");
-          break;
-        }
-
-        let newState = (game as any).applyMove(activeGame, action);
-
-        // Check for game end
-        const endResult = (game as any).checkGameEnd(newState);
-        if (endResult.isEnded) {
-          newState = {
-            ...newState,
-            status: "finished",
-            winner: endResult.winner,
-            isDraw: endResult.isDraw,
-          };
-        } else {
-          newState = {
-            ...newState,
-            currentTurn: (game as any).getNextTurn(newState),
-          };
-        }
-
-        newState.updatedAt = Date.now();
-        set({ activeGame: newState });
-
-        // Sync back to guest
-        sendMessage(activeGame.guestId, {
-          type: "game_state_sync",
-          sessionId: activeGame.id,
-          state: newState,
-        });
-        break;
-      }
-
-      case "game_state_sync": {
-        // Received state sync from host (we are guest)
-        const { activeGame } = state;
-        if (!activeGame || activeGame.id !== message.sessionId) break;
-
-        set({ activeGame: message.state });
-        break;
-      }
-
-      case "game_realtime_action": {
-        // Received real-time action from opponent
-        const { activeGame } = state;
-        if (!activeGame || activeGame.id !== message.sessionId) break;
 
         const game = gameRegistry.createInstance(activeGame.gameType);
         if (!game) break;
 
-        const action = message.action as RealTimeAction;
+        const isHost = myId === activeGame.hostId;
+        const input = message.input;
 
-        // Apply action locally
-        let newState = (game as any).applyAction(activeGame, action);
+        // Apply input using BaseGame.handleInput
+        let newState = game.handleInput(
+          activeGame,
+          input,
+          message.playerId,
+          isHost
+        );
 
         // Check for game end (if game implements it)
-        if (typeof (game as any).checkGameEnd === "function") {
-          const endResult = (game as any).checkGameEnd(newState);
+        if (game.checkGameEnd) {
+          const endResult = game.checkGameEnd(newState);
           if (endResult.isEnded) {
             newState = {
               ...newState,
@@ -488,6 +375,24 @@ export const useGameStore = create<GameState>((set, get) => ({
 
         newState.updatedAt = Date.now();
         set({ activeGame: newState });
+
+        // If we're the host, sync state back to client
+        if (isHost) {
+          sendMessage(activeGame.clientId, {
+            type: "game_state_sync",
+            sessionId: activeGame.id,
+            state: newState,
+          });
+        }
+        break;
+      }
+
+      case "game_state_sync": {
+        // Received state sync from host (we are guest)
+        const { activeGame } = state;
+        if (!activeGame || activeGame.id !== message.sessionId) break;
+
+        set({ activeGame: message.state });
         break;
       }
 
@@ -502,6 +407,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             },
           });
         }
+
+        // Also remove from pending invites if it exists
+        // This handles the case where host cancels before client accepts
+        state.removePendingInvite(message.sessionId);
         break;
       }
     }

@@ -10,7 +10,6 @@ export interface GameDefinition {
   description: string;
   minPlayers: number;
   maxPlayers: number;
-  isRealTime?: boolean; // true for real-time games, false/undefined for turn-based
 }
 
 // ==================== Game Session State ====================
@@ -19,50 +18,31 @@ export type GameStatus = "waiting" | "playing" | "finished" | "cancelled";
 
 /**
  * Runtime state of an active game session
- * Host manages authoritative state, guest receives synced state
+ * Host manages authoritative state, client receives synced state
  */
 export interface GameSession<TGameData = Record<string, any>> {
   id: string;
   gameType: string;
   hostId: string; // Player who created the game (runs main logic)
-  guestId: string; // Player who joined
+  clientId: string; // Player who joined (renamed from guestId)
   status: GameStatus;
-  currentTurn: string; // Player ID whose turn it is
   winner: string | null;
   isDraw: boolean;
-  data: TGameData; // Game-specific state
+  data: TGameData; // Game-specific state (games manage their own turn state if needed)
   createdAt: number;
   updatedAt: number;
 }
 
-// ==================== Game Actions ====================
+// ==================== Game Input ====================
 
 /**
- * Base interface for all game actions
+ * Generic game input sent from player to host
+ * Host processes and syncs authoritative state back
  */
-export interface GameAction {
-  type: string;
+export interface GameInput<TPayload = any> {
   playerId: string;
   timestamp: number;
-}
-
-/**
- * Action with game-specific payload
- */
-export interface GameMoveAction<TPayload = any> extends GameAction {
-  type: "move";
-  payload: TPayload;
-}
-
-/**
- * Real-time action (no turn validation)
- * Used by BaseRealTimeGame
- */
-export interface RealTimeAction<TPayload = any> {
-  type: string; // flexible - "draw", "paint", "cursor_move", etc.
-  playerId: string;
-  timestamp: number;
-  payload: TPayload;
+  payload: TPayload; // Game-specific input data
 }
 
 // ==================== P2P Game Messages ====================
@@ -71,11 +51,10 @@ export type GameMessageType =
   | "game_invite"
   | "game_accept"
   | "game_decline"
-  | "game_action"
-  | "game_state_sync"
+  | "game_input" // Player sends input to host
+  | "game_state_sync" // Host sends state to client
   | "game_leave"
-  | "game_rematch"
-  | "game_realtime_action";
+  | "game_rematch";
 
 export interface GameInviteMessage {
   type: "game_invite";
@@ -94,10 +73,11 @@ export interface GameDeclineMessage {
   sessionId: string;
 }
 
-export interface GameActionMessage {
-  type: "game_action";
+export interface GameInputMessage {
+  type: "game_input";
   sessionId: string;
-  action: GameAction;
+  playerId: string;
+  input: any; // Game-specific input payload
 }
 
 export interface GameStateSyncMessage {
@@ -117,21 +97,14 @@ export interface GameRematchMessage {
   newSessionId: string;
 }
 
-export interface GameRealTimeActionMessage {
-  type: "game_realtime_action";
-  sessionId: string;
-  action: RealTimeAction;
-}
-
 export type GameMessage =
   | GameInviteMessage
   | GameAcceptMessage
   | GameDeclineMessage
-  | GameActionMessage
+  | GameInputMessage
   | GameStateSyncMessage
   | GameLeaveMessage
-  | GameRematchMessage
-  | GameRealTimeActionMessage;
+  | GameRematchMessage;
 
 // ==================== Game Invite ====================
 

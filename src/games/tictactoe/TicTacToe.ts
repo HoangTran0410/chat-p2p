@@ -1,14 +1,18 @@
 import { BaseGame } from "../BaseGame";
-import { GameSession, GameMoveAction } from "../types";
+import { GameSession } from "../types";
 import { TicTacToeUI } from "./TicTacToeUI";
 import React from "react";
 
 export interface TicTacToeData {
   board: (string | null)[]; // 9 cells
+  currentTurn: string; // Player ID whose turn it is
   winningLine: number[] | null;
 }
 
-export type TicTacToeMove = number; // Index 0-8
+export interface TicTacToeInput {
+  action: "move" | "switchTurn";
+  cellIndex?: number; // Index 0-8 (only for move action)
+}
 
 const WINNING_COMBINATIONS = [
   [0, 1, 2],
@@ -21,59 +25,86 @@ const WINNING_COMBINATIONS = [
   [2, 4, 6], // Diagonals
 ];
 
-export class TicTacToeGame extends BaseGame<TicTacToeData, TicTacToeMove> {
+export class TicTacToeGame extends BaseGame<TicTacToeData, TicTacToeInput> {
   readonly gameId = "tictactoe";
   readonly gameName = "Tic-Tac-Toe";
   readonly gameIcon = "⭕";
   readonly gameDescription = "Classic 3x3 strategy game";
 
-  createInitialState(hostId: string, guestId: string): TicTacToeData {
+  createInitialState(hostId: string, clientId: string): TicTacToeData {
     return {
       board: Array(9).fill(null),
+      currentTurn: hostId, // Host goes first
       winningLine: null,
     };
   }
 
-  isValidMove(
+  handleInput(
     state: GameSession<TicTacToeData>,
-    action: GameMoveAction<TicTacToeMove>
-  ): boolean {
-    const { board } = state.data;
-    const index = action.payload;
+    input: TicTacToeInput,
+    playerId: string,
+    isHost: boolean
+  ): GameSession<TicTacToeData> {
+    // Handle switchTurn action
+    if (input.action === "switchTurn") {
+      const { board, currentTurn } = state.data;
+
+      // Only allow switching turn when board is empty
+      if (board.some((cell) => cell !== null)) return state;
+
+      // Only current turn player can switch
+      if (playerId !== currentTurn) return state;
+
+      // Switch to the other player
+      const nextTurn =
+        playerId === state.hostId ? state.clientId : state.hostId;
+
+      return {
+        ...state,
+        data: {
+          ...state.data,
+          currentTurn: nextTurn,
+        },
+        updatedAt: Date.now(),
+      };
+    }
+
+    // Handle move action
+    const { cellIndex } = input;
+    if (cellIndex === undefined) return state;
+
+    const { board, currentTurn } = state.data;
+
+    // Validate move (both host and client validate for client-side prediction)
 
     // Check bounds
-    if (index < 0 || index > 8) return false;
+    if (cellIndex < 0 || cellIndex > 8) return state;
 
     // Check if cell is empty
-    if (board[index] !== null) return false;
+    if (board[cellIndex] !== null) return state;
 
     // Check if game is already won
-    if (state.winner) return false;
+    if (state.winner) return state;
 
-    // Check turn (already handled by store, but good to double check)
-    if (!this.isPlayerTurn(state, action.playerId)) return false;
+    // Check turn
+    if (playerId !== currentTurn) return state;
 
-    return true;
-  }
-
-  applyMove(
-    state: GameSession<TicTacToeData>,
-    action: GameMoveAction<TicTacToeMove>
-  ): GameSession<TicTacToeData> {
-    const { board } = state.data;
-    const index = action.payload;
-    const playerSymbol = action.playerId === state.hostId ? "X" : "O";
-
-    // Create new board
+    // Apply move (both host and client apply optimistically)
+    const playerSymbol = playerId === state.hostId ? "X" : "O";
     const newBoard = [...board];
-    newBoard[index] = playerSymbol;
+    newBoard[cellIndex] = playerSymbol;
+
+    // Switch turn
+    const nextTurn = playerId === state.hostId ? state.clientId : state.hostId;
 
     return {
       ...state,
       data: {
         ...state.data,
         board: newBoard,
+        currentTurn: nextTurn,
       },
+      updatedAt: Date.now(),
     };
   }
 
@@ -89,16 +120,7 @@ export class TicTacToeGame extends BaseGame<TicTacToeData, TicTacToeMove> {
       const [a, b, c] = combination;
       if (board[a] && board[a] === board[b] && board[a] === board[c]) {
         // Find winner ID based on symbol
-        const winnerId = board[a] === "X" ? state.hostId : state.guestId;
-
-        // Store winning line in data (we need to be careful with immutability,
-        // but typically checkGameEnd is called after applyMove which returns new state,
-        // so we might need to update state.data.winningLine separately or just return it here if possible.
-        // BaseGame structure wraps this, so we'll just determine result here.
-        // Ideally we'd update winningLine in applyMove, but we can't easily there.
-        // Let's rely on UI to recalculate winning line or we can update it in the returned state if we changed the hook signature.
-        // For now, let's keep it simple.
-
+        const winnerId = board[a] === "X" ? state.hostId : state.clientId;
         return { isEnded: true, winner: winnerId, isDraw: false };
       }
     }
@@ -111,16 +133,19 @@ export class TicTacToeGame extends BaseGame<TicTacToeData, TicTacToeMove> {
     return { isEnded: false, winner: null, isDraw: false };
   }
 
-  renderGame(
+  render(
     state: GameSession<TicTacToeData>,
     myId: string,
-    onMove: (payload: TicTacToeMove) => void,
-    isMyTurn: boolean
+    isHost: boolean,
+    onInput: (input: TicTacToeInput) => void
   ): React.ReactNode {
+    const isMyTurn = state.data.currentTurn === myId;
+
     return React.createElement(TicTacToeUI, {
       state,
       myId,
-      onMove,
+      onMove: (cellIndex: number) => onInput({ action: "move", cellIndex }),
+      onSwitchTurn: () => onInput({ action: "switchTurn" }),
       isMyTurn,
     });
   }
