@@ -63,28 +63,9 @@
 
         const config = {
           iceServers: [
-            {
-              urls: "turns:global.relay.metered.ca:443?transport=tcp",
-              username: "85255418786a1fec898fa979",
-              credential: "gePlRCYyZJ2VMswp",
-            },
-            {
-              urls: "turn:global.relay.metered.ca:443",
-              username: "85255418786a1fec898fa979",
-              credential: "gePlRCYyZJ2VMswp",
-            },
-            {
-              urls: "turn:global.relay.metered.ca:80?transport=tcp",
-              username: "85255418786a1fec898fa979",
-              credential: "gePlRCYyZJ2VMswp",
-            },
-            {
-              urls: "turn:global.relay.metered.ca:80",
-              username: "85255418786a1fec898fa979",
-              credential: "gePlRCYyZJ2VMswp",
-            },
+            // ...
           ],
-          iceTransportPolicy: "relay", // Force TURN only
+          // iceTransportPolicy: "relay", // Force TURN only
         };
 
         addLog("Creating RTCPeerConnection with TURN-only config...", "info");
