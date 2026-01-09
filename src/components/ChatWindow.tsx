@@ -919,7 +919,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   />
                 )}
 
-                <button
+                {/* <button
                   type="button"
                   onClick={triggerFileSelect}
                   disabled={!isConnected}
@@ -929,7 +929,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   title="Attach File"
                 >
                   <Paperclip className="w-5 h-5" />
-                </button>
+                </button> */}
                 <textarea
                   value={inputText}
                   onChange={handleInputChange}
@@ -1119,7 +1119,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       )}
 
       {/* File Size Warning Modal */}
-      {showFileSizeWarning && pendingFile && (
+      {/* {showFileSizeWarning && pendingFile && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-sm w-full shadow-xl">
             <div className="flex items-center gap-3 mb-4">
@@ -1153,10 +1153,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
           </div>
         </div>
-      )}
+      )} */}
 
       {/* Sending Progress Overlay */}
-      {sendingProgress && (
+      {/* {sendingProgress && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 shadow-xl z-40 flex items-center gap-3 min-w-[200px]">
           <div className="animate-spin">
             <RefreshCw className="w-4 h-4 text-primary-400" />
@@ -1174,10 +1174,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             {sendingProgress.progress}%
           </span>
         </div>
-      )}
+      )} */}
 
       {/* Receiving Progress Overlay */}
-      {receivingProgress && (
+      {/* {receivingProgress && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 shadow-xl z-40 flex items-center gap-3 min-w-[200px]">
           <div className="animate-spin">
             <RefreshCw className="w-4 h-4 text-green-400" />
@@ -1197,7 +1197,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             {receivingProgress.progress}%
           </span>
         </div>
-      )}
+      )} */}
     </div>
   );
 };

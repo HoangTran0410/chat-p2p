@@ -2,14 +2,17 @@
 // Import and register all games here
 
 import { gameRegistry } from "./registry";
-import { TicTacToeGame } from "./tictactoe";
-import { CollaborativeCanvas } from "./canvas";
-import { YouTubeSync } from "./youtube";
-import { CaroGame } from "./caro";
+
+import { TicTacToeGame } from "./tictactoe/TicTacToe";
+import { CollaborativeCanvas } from "./canvas/Canvas";
+import { YouTubeSync } from "./youtube/YouTube";
+import { CaroGame } from "./caro/Caro";
+import { ChessGame } from "./chess/Chess";
 
 // Register game classes (not instances)
 gameRegistry.register(TicTacToeGame);
 gameRegistry.register(CaroGame);
+gameRegistry.register(ChessGame);
 gameRegistry.register(CollaborativeCanvas);
 gameRegistry.register(YouTubeSync);
 
